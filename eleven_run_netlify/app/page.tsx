@@ -41,6 +41,10 @@ export default function Home() {
     transitionRemaining: 0,
     transitionStage: null as Stage | null,
     lastFlashCue: -1,
+    photoMomentActive: false,
+    photoMomentElapsed: 0,
+    photoMomentTriggered: false,
+    photoMomentFlashPlayed: false,
   });
   const [view, setView] = useState({ mode: "ready" as Mode, score: 0, coins: 0, time: 0, speed: 1, stage: "campus" as Stage });
   const [countdown, setCountdown] = useState<number | "CORRA!" | null>(null);
@@ -124,7 +128,7 @@ export default function Home() {
     if (!graduate || !helperName.trim()) return;
     const ctx = ensureAudio();
     const finaleTest = window.location.hostname === "terminal.local" && new URLSearchParams(window.location.search).has("finale");
-    stateRef.current = { mode: "countdown", y: 0, vy: 0, ducking: false, score: 0, coins: 0, elapsed: finaleTest ? 118 : 0, celebration: 0, speed: finaleTest ? 850 : 340, distance: finaleTest ? 32000 : 0, spawnAt: finaleTest ? 32650 : 650, obstacles: [], coinItems: [], last: performance.now(), lastStageCue: finaleTest ? 3 : 0, transitionRemaining: 0, transitionStage: null, lastFlashCue: -1 };
+    stateRef.current = { mode: "countdown", y: 0, vy: 0, ducking: false, score: 0, coins: 0, elapsed: finaleTest ? 118 : 0, celebration: 0, speed: finaleTest ? 850 : 340, distance: finaleTest ? 32000 : 0, spawnAt: finaleTest ? 32650 : 650, obstacles: [], coinItems: [], last: performance.now(), lastStageCue: finaleTest ? 3 : 0, transitionRemaining: 0, transitionStage: null, lastFlashCue: -1, photoMomentActive: false, photoMomentElapsed: 0, photoMomentTriggered: false, photoMomentFlashPlayed: false };
     setCountdown(3);
     sync();
 
@@ -327,6 +331,32 @@ export default function Home() {
       }
       if (s.mode === "playing") {
         s.elapsed += dt; s.speed = 340 + (850 - 340) * Math.min(s.elapsed / SPEED_RAMP_SECONDS, 1); s.distance += s.speed * dt; s.score += dt * 18 * (s.speed / 340);
+
+        // Primeiro Momento Elevens: fotógrafo aparece no Campus uma única vez.
+        if (!s.photoMomentTriggered && s.elapsed >= 20 && s.elapsed < 30) {
+          s.photoMomentTriggered = true;
+          s.photoMomentActive = true;
+          s.photoMomentElapsed = 0;
+          s.photoMomentFlashPlayed = false;
+          s.obstacles = [];
+          s.coinItems = [];
+        }
+        if (s.photoMomentActive) {
+          s.photoMomentElapsed += dt;
+          s.obstacles = [];
+          s.coinItems = [];
+          if (!s.photoMomentFlashPlayed && s.photoMomentElapsed >= 1.35) {
+            s.photoMomentFlashPlayed = true;
+            s.score += 200;
+            playSound("flash");
+            sync();
+          }
+          if (s.photoMomentElapsed >= 3.2) {
+            s.photoMomentActive = false;
+            s.spawnAt = Math.max(s.spawnAt, s.distance + 650);
+          }
+        }
+
         const stageCue = s.elapsed >= 90 ? 3 : s.elapsed >= 60 ? 2 : s.elapsed >= 30 ? 1 : 0;
         if (stageCue > s.lastStageCue) {
           s.lastStageCue = stageCue;
@@ -342,7 +372,7 @@ export default function Home() {
         }
         s.vy -= 1900 * dt; s.y = Math.max(0, s.y + s.vy * dt); if (s.y === 0 && s.vy < 0) s.vy = 0;
         s.obstacles.forEach(o => o.x -= s.speed * dt); s.coinItems.forEach(c => c.x -= s.speed * dt);
-        if (s.distance > s.spawnAt) {
+        if (!s.photoMomentActive && s.distance > s.spawnAt) {
           const roll = Math.random();
           const kind: ObstacleKind = s.elapsed >= 90
             ? roll < .36 ? "graduationLow" : roll < .68 ? "photoCase" : "graduationGarland"
@@ -371,7 +401,7 @@ export default function Home() {
           const ow = aerial ? 160 : large ? 108 : 92;
           const oh = aerial ? 50 : large ? 58 : 50;
           const oy = aerial ? ground - 124 : ground - oh;
-          if (px+10 < o.x+ow && px+pw-9 > o.x && py+8 < oy+oh && py+ph > oy+5 && s.mode === "playing") { s.mode="over"; s.ducking=false; s.transitionRemaining=0; s.transitionStage=null; setPhaseTransition(null); playSound("collision"); sync(); }
+          if (!s.photoMomentActive && px+10 < o.x+ow && px+pw-9 > o.x && py+8 < oy+oh && py+ph > oy+5 && s.mode === "playing") { s.mode="over"; s.ducking=false; s.transitionRemaining=0; s.transitionStage=null; setPhaseTransition(null); playSound("collision"); sync(); }
         }
         for (const c of s.coinItems) { const cy=ground-c.y; if (!c.taken && Math.abs((px+pw/2)-c.x)<38 && Math.abs((py+ph/2)-cy)<48) { c.taken=true; s.coins++; s.score+=100; playSound("coin"); } }
         s.obstacles = s.obstacles.filter(o=>o.x>-100); s.coinItems=s.coinItems.filter(c=>c.x>-60&&!c.taken);
@@ -474,6 +504,35 @@ export default function Home() {
       const runSequence = [0, 3, 1, 2];
       const runFrame = runSequence[Math.floor(now / 90) % runSequence.length];
       const characterImage = s.ducking ? frames[5] : s.y > 0 ? frames[4] : frames[runFrame];
+      if (s.photoMomentActive && s.mode === "playing") {
+        const finale = finaleImagesRef.current;
+        const photographer = finale[1];
+        const momentT = s.photoMomentElapsed;
+        const enter = Math.min(1, momentT / .65);
+        const exit = momentT > 2.55 ? Math.min(1, (momentT - 2.55) / .65) : 0;
+        const ease = (v: number) => 1 - Math.pow(1 - Math.max(0, Math.min(1, v)), 3);
+        const photographerH = Math.min(230, h * .40);
+        if (photographer?.complete && photographer.naturalWidth > 0) {
+          const photographerW = photographerH * photographer.naturalWidth / photographer.naturalHeight;
+          const targetX = w * .78 - photographerW / 2;
+          const x = w + 30 - ease(enter) * (w + 30 - targetX) + ease(exit) * (photographerW + 90);
+          ctx.drawImage(photographer, x, ground - photographerH + 18, photographerW, photographerH);
+        }
+        const cardW = Math.min(390, w * .72);
+        const cardX = Math.max(18, w * .5 - cardW / 2);
+        rounded(cardX, 92, cardW, 82, 18, "rgba(8,11,16,.88)");
+        ctx.strokeStyle = "rgba(255,106,0,.65)"; ctx.lineWidth = 1.5; ctx.strokeRect(cardX, 92, cardW, 82);
+        ctx.textAlign = "center";
+        ctx.fillStyle = "#ff7a19"; ctx.font = "900 11px Arial"; ctx.fillText("MOMENTO ELEVENS", cardX + cardW / 2, 116);
+        ctx.fillStyle = "#ffffff"; ctx.font = "800 20px Arial"; ctx.fillText("Primeiros passos no Campus", cardX + cardW / 2, 143);
+        ctx.fillStyle = "#ffc83d"; ctx.font = "800 13px Arial"; ctx.fillText("+200 PONTOS", cardX + cardW / 2, 164);
+        if (momentT >= 1.35 && momentT <= 1.58) {
+          const flashAlpha = 1 - (momentT - 1.35) / .23;
+          ctx.fillStyle = `rgba(255,255,255,${Math.max(0, flashAlpha) * .72})`;
+          ctx.fillRect(0, 0, w, h);
+        }
+      }
+
       if (s.mode === "celebrating" || s.mode === "won") {
         const t = s.celebration;
         const ease = (v: number) => 1 - Math.pow(1 - Math.max(0, Math.min(1, v)), 3);
