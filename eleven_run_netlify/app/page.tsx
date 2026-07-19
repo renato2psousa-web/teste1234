@@ -9,7 +9,9 @@ type Obstacle = { x: number; kind: ObstacleKind; passed: boolean };
 type Coin = { x: number; y: number; taken: boolean };
 type SoundName = "start" | "jump" | "coin" | "collision" | "phase" | "flash" | "victory";
 
-const SPEED_RAMP_SECONDS = 75;
+const SPEED_RAMP_SECONDS = 110;
+const STAGE_SECONDS = 40;
+const GAME_SECONDS = STAGE_SECONDS * 4;
 
 export default function Home() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -43,7 +45,8 @@ export default function Home() {
     lastFlashCue: -1,
     photoMomentActive: false,
     photoMomentElapsed: 0,
-    photoMomentTriggered: false,
+    photoMomentsTriggered: 0,
+    photoMomentIndex: -1,
     photoMomentFlashPlayed: false,
   });
   const [view, setView] = useState({ mode: "ready" as Mode, score: 0, coins: 0, time: 0, speed: 1, stage: "campus" as Stage });
@@ -97,7 +100,7 @@ export default function Home() {
     audio.timer = window.setInterval(() => {
       const s = stateRef.current;
       if (!soundOnRef.current || !["playing","celebrating","won"].includes(s.mode) || ctx.state !== "running") return;
-      const roots = s.elapsed >= 90 ? [261.63,329.63,392,523.25] : s.elapsed >= 60 ? [220,277.18,329.63,440] : s.elapsed >= 30 ? [246.94,311.13,369.99,493.88] : [196,246.94,293.66,392];
+      const roots = s.elapsed >= 120 ? [261.63,329.63,392,523.25] : s.elapsed >= 80 ? [220,277.18,329.63,440] : s.elapsed >= 40 ? [246.94,311.13,369.99,493.88] : [196,246.94,293.66,392];
       const step = audio.step++;
       const oscillator = ctx.createOscillator();
       const gain = ctx.createGain();
@@ -121,14 +124,14 @@ export default function Home() {
 
   const sync = useCallback(() => {
     const s = stateRef.current;
-    setView({ mode: s.mode, score: Math.floor(s.score), coins: s.coins, time: Math.floor(s.elapsed), speed: +(s.speed / 340).toFixed(1), stage: s.elapsed >= 90 ? "graduation" : s.elapsed >= 60 ? "hospital" : s.elapsed >= 30 ? "laboratory" : "campus" });
+    setView({ mode: s.mode, score: Math.floor(s.score), coins: s.coins, time: Math.floor(s.elapsed), speed: +(s.speed / 340).toFixed(1), stage: s.elapsed >= 120 ? "graduation" : s.elapsed >= 80 ? "hospital" : s.elapsed >= 40 ? "laboratory" : "campus" });
   }, []);
 
   const start = useCallback(() => {
     if (!graduate || !helperName.trim()) return;
     const ctx = ensureAudio();
     const finaleTest = window.location.hostname === "terminal.local" && new URLSearchParams(window.location.search).has("finale");
-    stateRef.current = { mode: "countdown", y: 0, vy: 0, ducking: false, score: 0, coins: 0, elapsed: finaleTest ? 118 : 0, celebration: 0, speed: finaleTest ? 850 : 340, distance: finaleTest ? 32000 : 0, spawnAt: finaleTest ? 32650 : 650, obstacles: [], coinItems: [], last: performance.now(), lastStageCue: finaleTest ? 3 : 0, transitionRemaining: 0, transitionStage: null, lastFlashCue: -1, photoMomentActive: false, photoMomentElapsed: 0, photoMomentTriggered: false, photoMomentFlashPlayed: false };
+    stateRef.current = { mode: "countdown", y: 0, vy: 0, ducking: false, score: 0, coins: 0, elapsed: finaleTest ? 158 : 0, celebration: 0, speed: finaleTest ? 850 : 340, distance: finaleTest ? 32000 : 0, spawnAt: finaleTest ? 32650 : 650, obstacles: [], coinItems: [], last: performance.now(), lastStageCue: finaleTest ? 3 : 0, transitionRemaining: 0, transitionStage: null, lastFlashCue: -1, photoMomentActive: false, photoMomentElapsed: 0, photoMomentsTriggered: 0, photoMomentIndex: -1, photoMomentFlashPlayed: false };
     setCountdown(3);
     sync();
 
@@ -332,9 +335,12 @@ export default function Home() {
       if (s.mode === "playing") {
         s.elapsed += dt; s.speed = 340 + (850 - 340) * Math.min(s.elapsed / SPEED_RAMP_SECONDS, 1); s.distance += s.speed * dt; s.score += dt * 18 * (s.speed / 340);
 
-        // Primeiro Momento Elevens: fotógrafo aparece no Campus uma única vez.
-        if (!s.photoMomentTriggered && s.elapsed >= 20 && s.elapsed < 30) {
-          s.photoMomentTriggered = true;
+        // Um Momento Elevens em cada uma das três primeiras fases.
+        const photoMomentTimes = [22, 62, 102];
+        const nextPhotoMoment = photoMomentTimes[s.photoMomentsTriggered];
+        if (nextPhotoMoment !== undefined && s.elapsed >= nextPhotoMoment) {
+          s.photoMomentIndex = s.photoMomentsTriggered;
+          s.photoMomentsTriggered += 1;
           s.photoMomentActive = true;
           s.photoMomentElapsed = 0;
           s.photoMomentFlashPlayed = false;
@@ -347,7 +353,8 @@ export default function Home() {
           s.coinItems = [];
           if (!s.photoMomentFlashPlayed && s.photoMomentElapsed >= 1.35) {
             s.photoMomentFlashPlayed = true;
-            s.score += 200;
+            const momentBonuses = [200, 250, 300];
+            s.score += momentBonuses[s.photoMomentIndex] ?? 200;
             playSound("flash");
             sync();
           }
@@ -357,7 +364,7 @@ export default function Home() {
           }
         }
 
-        const stageCue = s.elapsed >= 90 ? 3 : s.elapsed >= 60 ? 2 : s.elapsed >= 30 ? 1 : 0;
+        const stageCue = s.elapsed >= 120 ? 3 : s.elapsed >= 80 ? 2 : s.elapsed >= 40 ? 1 : 0;
         if (stageCue > s.lastStageCue) {
           s.lastStageCue = stageCue;
           s.mode = "transition";
@@ -374,11 +381,11 @@ export default function Home() {
         s.obstacles.forEach(o => o.x -= s.speed * dt); s.coinItems.forEach(c => c.x -= s.speed * dt);
         if (!s.photoMomentActive && s.distance > s.spawnAt) {
           const roll = Math.random();
-          const kind: ObstacleKind = s.elapsed >= 90
+          const kind: ObstacleKind = s.elapsed >= 120
             ? roll < .36 ? "graduationLow" : roll < .68 ? "photoCase" : "graduationGarland"
-            : s.elapsed >= 60
+            : s.elapsed >= 80
             ? roll < .36 ? "medicalCase" : roll < .68 ? "wheelchair" : "clinicalMonitor"
-            : s.elapsed >= 30
+            : s.elapsed >= 40
               ? roll < .36 ? "sampleTray" : roll < .68 ? "microscopeCart" : "labLight"
               : roll < .36 ? "backpack" : roll < .68 ? "cart" : "banner";
           const obstacleX = w + 150;
@@ -405,7 +412,7 @@ export default function Home() {
         }
         for (const c of s.coinItems) { const cy=ground-c.y; if (!c.taken && Math.abs((px+pw/2)-c.x)<38 && Math.abs((py+ph/2)-cy)<48) { c.taken=true; s.coins++; s.score+=100; playSound("coin"); } }
         s.obstacles = s.obstacles.filter(o=>o.x>-100); s.coinItems=s.coinItems.filter(c=>c.x>-60&&!c.taken);
-        if (s.mode === "playing" && s.elapsed >= 120) { s.elapsed = 120; s.mode = "celebrating"; s.celebration = 0; s.obstacles = []; s.coinItems = []; playSound("victory"); sync(); }
+        if (s.mode === "playing" && s.elapsed >= GAME_SECONDS) { s.elapsed = GAME_SECONDS; s.mode = "celebrating"; s.celebration = 0; s.obstacles = []; s.coinItems = []; playSound("victory"); sync(); }
       }
       if (s.mode === "transition") {
         s.transitionRemaining = Math.max(0, s.transitionRemaining - dt);
@@ -500,23 +507,36 @@ export default function Home() {
       }
 
       const px=Math.max(64,w*.17), ph=s.ducking?48:82, py=ground-ph-s.y;
-      const frames = s.elapsed >= 90 ? graduationImagesRef.current : characterImagesRef.current;
+      const frames = s.elapsed >= 120 ? graduationImagesRef.current : characterImagesRef.current;
       const runSequence = [0, 3, 1, 2];
       const runFrame = runSequence[Math.floor(now / 90) % runSequence.length];
       const characterImage = s.ducking ? frames[5] : s.y > 0 ? frames[4] : frames[runFrame];
       if (s.photoMomentActive && s.mode === "playing") {
         const finale = finaleImagesRef.current;
-        const photographer = finale[1];
+        const momentPhotographers = [finale[1], finale[2], finale[1]];
+        const photographer = momentPhotographers[s.photoMomentIndex] ?? finale[1];
+        const momentTitles = ["Primeiros passos no Campus", "Descobertas no Laboratório", "Vivência no Internato"];
+        const momentBonuses = [200, 250, 300];
         const momentT = s.photoMomentElapsed;
         const enter = Math.min(1, momentT / .65);
         const exit = momentT > 2.55 ? Math.min(1, (momentT - 2.55) / .65) : 0;
         const ease = (v: number) => 1 - Math.pow(1 - Math.max(0, Math.min(1, v)), 3);
-        const photographerH = Math.min(230, h * .40);
+        const photographerH = Math.min(180, h * .31);
         if (photographer?.complete && photographer.naturalWidth > 0) {
           const photographerW = photographerH * photographer.naturalWidth / photographer.naturalHeight;
-          const targetX = w * .78 - photographerW / 2;
+          const targetX = w * .84 - photographerW / 2;
           const x = w + 30 - ease(enter) * (w + 30 - targetX) + ease(exit) * (photographerW + 90);
-          ctx.drawImage(photographer, x, ground - photographerH + 18, photographerW, photographerH);
+          const y = ground - photographerH + 22;
+          const shouldFlip = s.photoMomentIndex !== 1;
+          ctx.save();
+          if (shouldFlip) {
+            ctx.translate(x + photographerW / 2, 0);
+            ctx.scale(-1, 1);
+            ctx.drawImage(photographer, -photographerW / 2, y, photographerW, photographerH);
+          } else {
+            ctx.drawImage(photographer, x, y, photographerW, photographerH);
+          }
+          ctx.restore();
         }
         const cardW = Math.min(390, w * .72);
         const cardX = Math.max(18, w * .5 - cardW / 2);
@@ -524,8 +544,8 @@ export default function Home() {
         ctx.strokeStyle = "rgba(255,106,0,.65)"; ctx.lineWidth = 1.5; ctx.strokeRect(cardX, 92, cardW, 82);
         ctx.textAlign = "center";
         ctx.fillStyle = "#ff7a19"; ctx.font = "900 11px Arial"; ctx.fillText("MOMENTO ELEVENS", cardX + cardW / 2, 116);
-        ctx.fillStyle = "#ffffff"; ctx.font = "800 20px Arial"; ctx.fillText("Primeiros passos no Campus", cardX + cardW / 2, 143);
-        ctx.fillStyle = "#ffc83d"; ctx.font = "800 13px Arial"; ctx.fillText("+200 PONTOS", cardX + cardW / 2, 164);
+        ctx.fillStyle = "#ffffff"; ctx.font = "800 20px Arial"; ctx.fillText(momentTitles[s.photoMomentIndex] ?? "Momento registrado", cardX + cardW / 2, 143);
+        ctx.fillStyle = "#ffc83d"; ctx.font = "800 13px Arial"; ctx.fillText(`+${momentBonuses[s.photoMomentIndex] ?? 200} PONTOS`, cardX + cardW / 2, 164);
         if (momentT >= 1.35 && momentT <= 1.58) {
           const flashAlpha = 1 - (momentT - 1.35) / .23;
           ctx.fillStyle = `rgba(255,255,255,${Math.max(0, flashAlpha) * .72})`;
