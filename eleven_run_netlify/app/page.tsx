@@ -456,13 +456,32 @@ export default function Home() {
         }
         ctx.restore(); return true;
       };
-      const labProgress = Math.max(0, Math.min(1, (s.elapsed - 28) / 4));
-      const hospitalProgress = Math.max(0, Math.min(1, (s.elapsed - 58) / 4));
-      const graduationProgress = Math.max(0, Math.min(1, (s.elapsed - 88) / 4));
-      const campusAlpha = 1 - labProgress;
-      const laboratoryAlpha = labProgress * (1 - hospitalProgress);
-      const hospitalAlpha = hospitalProgress * (1 - graduationProgress);
-      const graduationAlpha = graduationProgress;
+      let campusAlpha = s.elapsed < 40 ? 1 : 0;
+      let laboratoryAlpha = s.elapsed >= 40 && s.elapsed < 80 ? 1 : 0;
+      let hospitalAlpha = s.elapsed >= 80 && s.elapsed < 120 ? 1 : 0;
+      let graduationAlpha = s.elapsed >= 120 ? 1 : 0;
+
+      // A troca visual acontece somente durante a tela de transição,
+      // depois que os 40 segundos da fase foram concluídos.
+      if (s.mode === "transition" && s.transitionStage) {
+        const transitionProgress = Math.max(0, Math.min(1, 1 - s.transitionRemaining / 5));
+        if (s.transitionStage === "laboratory") {
+          campusAlpha = 1 - transitionProgress;
+          laboratoryAlpha = transitionProgress;
+          hospitalAlpha = 0;
+          graduationAlpha = 0;
+        } else if (s.transitionStage === "hospital") {
+          campusAlpha = 0;
+          laboratoryAlpha = 1 - transitionProgress;
+          hospitalAlpha = transitionProgress;
+          graduationAlpha = 0;
+        } else {
+          campusAlpha = 0;
+          laboratoryAlpha = 0;
+          hospitalAlpha = 1 - transitionProgress;
+          graduationAlpha = transitionProgress;
+        }
+      }
       const backgroundReady = Boolean(backgrounds?.campus?.complete || backgrounds?.laboratory?.complete || backgrounds?.hospital?.complete || backgrounds?.graduation?.complete);
       drawBackground(backgrounds?.campus, campusAlpha);
       drawBackground(backgrounds?.laboratory, laboratoryAlpha);
