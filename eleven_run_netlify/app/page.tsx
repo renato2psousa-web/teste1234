@@ -15,7 +15,121 @@ const SPEED_RAMP_SECONDS = 110;
 const STAGE_SECONDS = 40;
 const GAME_SECONDS = STAGE_SECONDS * 4;
 
+
+
+type ResultData = {
+  result_code: string;
+  helper_name: string;
+  score: number;
+  elevens_confirmed: number;
+  completed: boolean;
+  graduate: { id: number; name: string; display_name: string } | null;
+  event: { name: string; event_code: string } | null;
+};
+
+type RankingRow = { position: number; graduate_id: number; graduate_name: string; best_score: number; elevens_total: number; completed_games: number };
+
+function navigate(path: string) { window.location.href = path; }
+
+function ResultPage({ code }: { code: string }) {
+  const [result, setResult] = useState<ResultData | null>(null);
+  const [position, setPosition] = useState<number | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const response = await fetch(`/.netlify/functions/get-result?code=${encodeURIComponent(code)}`, { cache: "no-store" });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data?.error || "Resultado não encontrado.");
+        const rankingResponse = await fetch("/.netlify/functions/get-ranking?event_code=MED15-UNIRV-AP-2026", { cache: "no-store" });
+        let currentPosition: number | null = null;
+        if (rankingResponse.ok) {
+          const ranking = await rankingResponse.json();
+          const row = Array.isArray(ranking.accumulated) ? ranking.accumulated.find((item: RankingRow) => item.graduate_id === data.graduate_id) : null;
+          currentPosition = row?.position ?? null;
+        }
+        if (!cancelled) { setResult(data); setPosition(currentPosition); }
+      } catch (err) { if (!cancelled) setError(err instanceof Error ? err.message : "Não foi possível abrir o resultado."); }
+      finally { if (!cancelled) setLoading(false); }
+    };
+    void load();
+    return () => { cancelled = true; };
+  }, [code]);
+
+  const storyCanvas = useCallback(() => {
+    if (!result) return null;
+    const canvas = document.createElement("canvas");
+    canvas.width = 1080; canvas.height = 1920;
+    const ctx = canvas.getContext("2d"); if (!ctx) return null;
+    const gradient = ctx.createLinearGradient(0, 0, 0, 1920);
+    gradient.addColorStop(0, "#071526"); gradient.addColorStop(.55, "#09101a"); gradient.addColorStop(1, "#030609");
+    ctx.fillStyle = gradient; ctx.fillRect(0,0,1080,1920);
+    ctx.fillStyle = "rgba(255,106,0,.14)"; ctx.beginPath(); ctx.arc(900,300,420,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle = "rgba(255,255,255,.04)"; ctx.beginPath(); ctx.arc(170,1320,360,0,Math.PI*2); ctx.fill();
+    ctx.textAlign = "center";
+    ctx.fillStyle = "#ffffff"; ctx.font = "900 64px Arial"; ctx.fillText("FAMILY WEEK",540,170);
+    ctx.fillStyle = "#ff7614"; ctx.font = "800 38px Arial"; ctx.fillText("NO STUDIO ONZE",540,225);
+    ctx.fillStyle = "#ff7614"; ctx.fillRect(330,285,420,70);
+    ctx.fillStyle = "#ffffff"; ctx.font = "900 32px Arial"; ctx.fillText("JORNADA CONCLUÍDA",540,332);
+    const name=(result.graduate?.display_name || result.graduate?.name || "FORMANDO").toUpperCase();
+    ctx.fillStyle = "#ffffff"; ctx.font = name.length > 24 ? "900 54px Arial" : "900 72px Arial";
+    const parts=name.split(' '); let line=''; const lines=[];
+    for(const part of parts){const test=(line+' '+part).trim(); if(ctx.measureText(test).width>900&&line){lines.push(line);line=part}else line=test} if(line)lines.push(line);
+    lines.slice(0,2).forEach((value,index)=>ctx.fillText(value,540,500+index*82));
+    ctx.strokeStyle = "rgba(255,255,255,.18)"; ctx.lineWidth=2; ctx.strokeRect(110,720,860,390);
+    const metrics=[{label:"LUGAR",value:position?`${position}º`:"—"},{label:"PONTUAÇÃO",value:result.score.toLocaleString('pt-BR')},{label:"PONTOS ELEVENS",value:String(result.elevens_confirmed)}];
+    metrics.forEach((m,i)=>{const x=250+i*290; ctx.fillStyle="#ff7614"; ctx.font="900 58px Arial";ctx.fillText(m.value,x,875);ctx.fillStyle="#aeb8c6";ctx.font="700 22px Arial";ctx.fillText(m.label,x,925)});
+    ctx.fillStyle = "#d9dfe7"; ctx.font="500 30px Arial"; ctx.fillText(`Jogado por ${result.helper_name}`,540,1035);
+    ctx.fillStyle = "#ffffff"; ctx.font="700 36px Arial"; ctx.fillText("Você viveu cada fase.",540,1320); ctx.fillText("Nós registramos cada momento.",540,1370);
+    ctx.fillStyle = "#ff7614"; ctx.font="900 44px Arial"; ctx.fillText("@studioonze",540,1610);
+    ctx.fillStyle = "#ffffff"; ctx.font="900 52px Arial"; ctx.fillText("STUDIO ONZE",540,1760);
+    ctx.fillStyle = "#7e8998"; ctx.font="600 20px Arial"; ctx.fillText(`Código ${result.result_code}`,540,1820);
+    return canvas;
+  }, [position, result]);
+
+  const saveImage = useCallback(() => { const canvas=storyCanvas(); if(!canvas)return; const link=document.createElement('a'); link.download=`family-week-${code}.png`; link.href=canvas.toDataURL('image/png'); link.click(); },[code,storyCanvas]);
+  const share = useCallback(async () => {
+    if (!result) return;
+    const url=window.location.href; const text=`${result.graduate?.display_name || result.graduate?.name} concluiu a Jornada Elevens na Family Week no Studio Onze!`;
+    try {
+      const canvas=storyCanvas();
+      if (canvas && navigator.share && navigator.canShare) {
+        const blob=await new Promise<Blob|null>(resolve=>canvas.toBlob(resolve,'image/png'));
+        if(blob){const file=new File([blob],`family-week-${code}.png`,{type:'image/png'}); if(navigator.canShare({files:[file]})){await navigator.share({title:'Family Week no Studio Onze',text,files:[file]});return;}}
+      }
+      if(navigator.share) await navigator.share({title:'Family Week no Studio Onze',text,url}); else saveImage();
+    } catch { /* compartilhamento cancelado */ }
+  },[code,result,saveImage,storyCanvas]);
+
+  if (loading) return <main className="public-page center-page"><div className="loading-card">Preparando sua conquista…</div></main>;
+  if (error || !result) return <main className="public-page center-page"><div className="loading-card"><h1>Resultado indisponível</h1><p>{error}</p><button onClick={()=>navigate('/')}>Voltar ao jogo</button></div></main>;
+  const graduateName=result.graduate?.display_name || result.graduate?.name || "Formando";
+  return <main className="public-page result-page">
+    <section className="story-card"><div className="story-brand"><strong>FAMILY WEEK</strong><span>NO STUDIO ONZE</span></div><span className="story-ribbon">JORNADA CONCLUÍDA</span><h1>{graduateName}</h1><div className="story-hero"><img src="/finale/photographer-01.png" alt="Fotógrafo do Studio Onze"/><img className="graduate-victory" src="/finale/character-victory.png" alt="Personagem celebrando a formatura"/><img src="/finale/photographer-02.png" alt="Fotógrafo do Studio Onze"/></div><div className="story-metrics"><div><strong>{position?`${position}º`:'—'}</strong><span>lugar</span></div><div><strong>{result.score.toLocaleString('pt-BR')}</strong><span>pontos</span></div><div><strong>{result.elevens_confirmed}</strong><span>Pontos Elevens</span></div></div><p className="played-by">Jogado por {result.helper_name}</p><p className="campaign-line">Você viveu cada fase.<br/>Nós registramos cada momento.</p><b className="instagram">@studioonze</b></section>
+    <section className="result-actions"><button className="primary-action" onClick={share}>Compartilhar resultado</button><button onClick={saveImage}>Salvar imagem</button><button onClick={()=>navigate('/ranking')}>Ver ranking geral</button><button className="text-action" onClick={()=>navigate('/')}>Voltar ao jogo</button></section>
+  </main>;
+}
+
+function RankingPage() {
+  const [tab,setTab]=useState<'accumulated'|'records'>('accumulated');
+  const [rows,setRows]=useState<RankingRow[]>([]);
+  const [loading,setLoading]=useState(true);
+  const [error,setError]=useState('');
+  useEffect(()=>{let cancelled=false; const load=async()=>{try{const response=await fetch('/.netlify/functions/get-ranking?event_code=MED15-UNIRV-AP-2026',{cache:'no-store'});const data=await response.json();if(!response.ok)throw new Error(data?.error||'Não foi possível carregar o ranking.');if(!cancelled)setRows(tab==='accumulated'?data.accumulated:data.records)}catch(err){if(!cancelled)setError(err instanceof Error?err.message:'Erro ao carregar ranking.')}finally{if(!cancelled)setLoading(false)}};setLoading(true);void load();return()=>{cancelled=true}},[tab]);
+  return <main className="public-page ranking-page"><header className="ranking-header"><div><span>FAMILY WEEK NO STUDIO ONZE</span><h1>Ranking geral</h1></div><button onClick={()=>navigate('/')}>Voltar ao jogo</button></header><div className="ranking-tabs"><button className={tab==='accumulated'?'active':''} onClick={()=>setTab('accumulated')}>Pontos Elevens acumulados</button><button className={tab==='records'?'active':''} onClick={()=>setTab('records')}>Melhores pontuações</button></div>{loading?<div className="ranking-empty">Atualizando ranking…</div>:error?<div className="ranking-empty">{error}</div>:rows.length===0?<div className="ranking-empty">O ranking será exibido após a primeira jornada concluída.</div>:<div className="ranking-table"><div className="ranking-row ranking-head"><span>Posição</span><span>Formando</span><span>{tab==='accumulated'?'Pontos Elevens':'Pontuação'}</span><span>Partidas</span></div>{rows.map(row=><div className="ranking-row" key={row.graduate_id}><strong className={`rank rank-${row.position}`}>{row.position}º</strong><b>{row.graduate_name}</b><strong className="rank-value">{tab==='accumulated'?row.elevens_total:row.best_score.toLocaleString('pt-BR')}</strong><span>{row.completed_games}</span></div>)}</div>}</main>;
+}
+
 export default function Home() {
+  const path = typeof window === "undefined" ? "/" : window.location.pathname;
+  if (path.startsWith("/resultado/")) return <ResultPage code={decodeURIComponent(path.split('/').filter(Boolean)[1] || '')} />;
+  if (path === "/ranking" || path.startsWith("/ranking/")) return <RankingPage />;
+  return <Game />;
+}
+
+function Game() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const rafRef = useRef(0);
   const characterImagesRef = useRef<HTMLImageElement[]>([]);
@@ -56,6 +170,8 @@ export default function Home() {
   const [phaseTransition, setPhaseTransition] = useState<{ stage: Stage; remaining: number } | null>(null);
   const [soundOn, setSoundOn] = useState(true);
   const [graduate, setGraduate] = useState("");
+  const [graduateQuery, setGraduateQuery] = useState("");
+  const [graduateSearchOpen, setGraduateSearchOpen] = useState(false);
   const [helperName, setHelperName] = useState("");
   const [graduates, setGraduates] = useState<Graduate[]>([]);
   const [graduatesLoading, setGraduatesLoading] = useState(true);
@@ -210,6 +326,9 @@ export default function Home() {
 
   const start = useCallback(() => {
     if (!graduate || !helperName.trim()) return;
+    setSavedResult(null);
+    setSaveError("");
+    resultSavedRef.current = false;
     resultSavedRef.current = false;
     setSavedResult(null);
     setSaveError("");
@@ -722,7 +841,7 @@ export default function Home() {
         <div className="start-copy"><span className="eyebrow">SUA JORNADA COMEÇA AGORA</span><h1>Corra rumo à<br/><em>Formatura.</em></h1><p>Colete Pontos Elevens, supere os obstáculos do campus e avance na sua jornada da Medicina.</p></div>
         <img className="hero-character" src="/characters/run/frame-01.png" alt="Personagem médica do Elevens Run" />
         <div className="identity-card">
-          <label><span>FORMANDO</span><select value={graduate} onChange={event=>setGraduate(event.target.value)} disabled={graduatesLoading||!!graduatesError}><option value="">{graduatesLoading?"Carregando formandos...":graduatesError?"Erro ao carregar formandos":"Selecione o formando"}</option>{graduates.map(item=><option key={item.id} value={String(item.id)}>{item.display_name}</option>)}</select>{graduatesError&&<small className="form-error">{graduatesError}</small>}</label>
+          <label className="graduate-search"><span>FORMANDO</span><input value={graduateQuery} onFocus={()=>setGraduateSearchOpen(true)} onBlur={()=>window.setTimeout(()=>setGraduateSearchOpen(false),140)} onChange={event=>{setGraduateQuery(event.target.value);setGraduate("");setGraduateSearchOpen(true)}} placeholder={graduatesLoading?"Carregando formandos...":"Digite o nome do formando"} disabled={graduatesLoading||!!graduatesError} autoComplete="off" role="combobox" aria-expanded={graduateSearchOpen}/>{graduateSearchOpen&&!graduatesLoading&&!graduatesError&&<div className="graduate-options">{graduates.filter(item=>item.display_name.toLocaleLowerCase('pt-BR').includes(graduateQuery.trim().toLocaleLowerCase('pt-BR'))).slice(0,8).map(item=><button type="button" key={item.id} onMouseDown={event=>event.preventDefault()} onClick={()=>{setGraduate(String(item.id));setGraduateQuery(item.display_name);setGraduateSearchOpen(false)}}><b>{item.display_name}</b><small>{item.contract}</small></button>)}{graduateQuery.trim()&&graduates.filter(item=>item.display_name.toLocaleLowerCase('pt-BR').includes(graduateQuery.trim().toLocaleLowerCase('pt-BR'))).length===0&&<p>Nenhum formando encontrado.</p>}</div>}{graduatesError&&<small className="form-error">{graduatesError}</small>}</label>
           <label><span>QUEM ESTÁ AJUDANDO HOJE?</span><input value={helperName} onChange={event=>setHelperName(event.target.value)} placeholder="Digite o nome de quem está ajudando" autoComplete="name" /></label>
           <button className="start-button" onClick={start} disabled={!graduate||!helperName.trim()}>INICIAR JORNADA <span>→</span></button>
           <div className="gesture-guide"><span>☝️ <b>Deslize para cima</b><small>para pular</small></span><i/><span>👇 <b>Deslize para baixo</b><small>para abaixar</small></span></div>
@@ -730,7 +849,8 @@ export default function Home() {
       </div>}
       {view.mode==="transition"&&phaseTransition&&<div className="phase-transition-overlay"><div className="phase-transition-card"><span>PRÓXIMA ETAPA</span><h2>{phaseTransition.stage==="laboratory"?"LABORATÓRIO":phaseTransition.stage==="hospital"?"INTERNATO":"COLAÇÃO"}</h2><p>{phaseTransition.stage==="laboratory"?"Uma nova etapa de aprendizado, prática e descobertas.":phaseTransition.stage==="hospital"?"A rotina se intensifica e os desafios ficam mais exigentes.":"A reta final da jornada até a conquista da formatura."}</p><small>Continuando em {Math.max(1,Math.ceil(phaseTransition.remaining))}s</small></div></div>}
       {view.mode==="countdown"&&<div className="countdown-overlay"><div className="countdown-card"><span className="countdown-kicker">PREPARE-SE, {graduates.find(item=>String(item.id)===graduate)?.display_name||"FORMANDO"}</span><strong>{countdown}</strong><div className="countdown-gestures"><span>↑ <b>Deslize para cima</b><small>para pular</small></span><span>↓ <b>Deslize para baixo</b><small>para abaixar</small></span></div></div></div>}
-      {view.mode!=="ready"&&view.mode!=="playing"&&view.mode!=="countdown"&&view.mode!=="celebrating"&&view.mode!=="transition"&&<div className={view.mode==="won"?"overlay victory-overlay":"overlay"}><div className="modal"><span className="eyebrow">{view.mode==="won"?"JORNADA CONCLUÍDA":"PLANTÃO ENCERRADO"}</span><h1>{view.mode==="won"?<>Você chegou à<br/><em>Formatura!</em></>:<>Quase! Tente<br/><em>mais uma vez.</em></>}</h1><p>{graduate && <strong>{graduates.find(item=>String(item.id)===graduate)?.display_name}: </strong>}Sua pontuação foi {view.score} com {view.coins} Pontos Elevens.</p>{view.mode==="won"&&<div className="ranking-status">{savingResult&&<p>Registrando sua conquista...</p>}{savedResult&&<><p><strong>{savedResult.elevens_confirmed} Pontos Elevens confirmados</strong> — inclui bônus de {savedResult.completion_bonus}.</p><p>{savedResult.position?<>Você está em <strong>{savedResult.position}º lugar</strong> no ranking acumulado.</>:<>Resultado confirmado no ranking.</>}</p><small>Código do resultado: {savedResult.result_code}</small></>}{saveError&&<p className="form-error">{saveError}</p>}</div>}<button onClick={start} disabled={savingResult}>JOGAR NOVAMENTE<span>→</span></button></div></div>}
+      {view.mode==="won"&&<div className="overlay victory-overlay"><div className="victory-panel"><div className="victory-copy"><span className="family-week-label">FAMILY WEEK NO STUDIO ONZE</span><span className="eyebrow">JORNADA CONCLUÍDA</span><h1>{graduates.find(item=>String(item.id)===graduate)?.display_name||"Formando"}</h1><p>Você chegou à Formatura com <strong>{view.score.toLocaleString('pt-BR')}</strong> pontos e coletou <strong>{view.coins}</strong> Pontos Elevens.</p>{savingResult&&<div className="ranking-status"><p>Registrando sua conquista...</p></div>}{savedResult&&<div className="victory-data"><div><small>PONTOS CONFIRMADOS</small><strong>{savedResult.elevens_confirmed}</strong><span>inclui bônus de {savedResult.completion_bonus}</span></div><div><small>POSIÇÃO NO RANKING</small><strong>{savedResult.position?`${savedResult.position}º`:'—'}</strong><span>ranking acumulado</span></div><div><small>CÓDIGO</small><strong className="result-code">{savedResult.result_code}</strong></div></div>}{saveError&&<p className="form-error">{saveError}</p>}</div><div className="victory-share">{savedResult?<><img className="qr-code" src={`https://api.qrserver.com/v1/create-qr-code/?size=360x360&margin=10&data=${encodeURIComponent(`${typeof window!=="undefined"?window.location.origin:""}/resultado/${savedResult.result_code}`)}`} alt="QR Code do resultado"/><h2>Leve sua conquista com você</h2><p>Escaneie para abrir seu card no celular, compartilhar e ver o ranking.</p><button className="secondary-button" onClick={()=>navigate('/ranking')}>VER RANKING GERAL</button></>:<div className="qr-placeholder">O QR Code aparecerá após a confirmação.</div>}<button className="start-button" onClick={start} disabled={savingResult}>JOGAR NOVAMENTE <span>→</span></button></div></div></div>}
+      {view.mode==="over"&&<div className="overlay"><div className="modal"><span className="eyebrow">PLANTÃO ENCERRADO</span><h1>Quase! Tente<br/><em>mais uma vez.</em></h1><p>{graduate&&<strong>{graduates.find(item=>String(item.id)===graduate)?.display_name}: </strong>}Sua pontuação foi {view.score} com {view.coins} Pontos Elevens.</p><button onClick={start}>JOGAR NOVAMENTE<span>→</span></button></div></div>}
     </section>
     <footer><span>STUDIO ONZE • ELEVENS RUN</span><span className="legend"><i/> TOUCH-SCREEN <i/> JORNADA DA MEDICINA</span></footer>
   </main>;
