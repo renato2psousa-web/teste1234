@@ -305,17 +305,20 @@ function ResultPage({ code }: { code: string }) {
   const graduateName = result.graduate?.display_name || result.graduate?.name || "Formando";
 
   return <main className="public-page result-page">
-    <section className="story-card story-card--share">
+    <section className="story-card story-card--share story-card--cinematic">
       <div className="story-background" style={{ backgroundImage: "url('/backgrounds/graduation-01.png')" }} />
       <div className="story-background-overlay" />
+      <div className="story-confetti" aria-hidden="true" />
       <div className="story-shell">
+        <div className="story-logo">ELEVENS <span>RUN</span></div>
         <div className="story-brand story-brand--large"><strong>FAMILY WEEK</strong><span>NO STUDIO ONZE</span></div>
-        <span className="story-ribbon story-ribbon--dark">JORNADA CONCLUÍDA</span>
-        <h1 className="story-name">{graduateName}</h1>
+        <span className="story-ribbon story-ribbon--outline">★ &nbsp; JORNADA CONCLUÍDA &nbsp; ★</span>
+        <h1 className="story-name story-name--hero">{graduateName}</h1>
 
-        <div className="story-stage">
+        <div className="story-stage story-stage--fullbleed">
           <div className="story-stage-bg" style={{ backgroundImage: "url('/backgrounds/graduation-01.png')" }} />
           <div className="story-stage-overlay" />
+          <div className="story-stage-light" />
           <div className="story-stage-characters">
             <img className="story-figure story-figure--left" src="/finale/photographer-01.png" alt="Fotógrafo do Studio Onze" />
             <img className="story-figure story-figure--main" src="/finale/character-victory.png" alt="Personagem celebrando a formatura" />
@@ -323,23 +326,14 @@ function ResultPage({ code }: { code: string }) {
           </div>
         </div>
 
-        <div className="story-metrics story-metrics--showcase">
-          <div>
-            <strong>{position ? `${position}º` : "—"}</strong>
-            <span>lugar</span>
-          </div>
-          <div>
-            <strong>{result.score.toLocaleString("pt-BR")}</strong>
-            <span>pontos</span>
-          </div>
-          <div>
-            <strong>{result.elevens_confirmed}</strong>
-            <span>Pontos Elevens</span>
-          </div>
+        <div className="story-metrics story-metrics--showcase story-metrics--premium">
+          <div><span className="metric-icon">🏅</span><strong>{position ? `${position}º` : "—"}</strong><span>lugar</span></div>
+          <div><span className="metric-icon">★</span><strong>{result.score.toLocaleString("pt-BR")}</strong><span>pontos</span></div>
+          <div><span className="metric-icon">11</span><strong>{result.elevens_confirmed}</strong><span>Pontos Elevens</span></div>
         </div>
 
-        <p className="played-by story-helper">Jogado por {result.helper_name}</p>
-        <p className="campaign-line story-cta-copy">Você viveu cada fase.<br />Nós registramos cada momento.</p>
+        <p className="played-by story-helper story-helper--compact">🎮 Jogado por <strong>{result.helper_name}</strong></p>
+        <p className="campaign-line story-cta-copy">Você viveu cada fase.<br />Nós registramos <em>cada momento.</em></p>
         <div className="story-footer-brand">
           <b className="instagram">@studioonze</b>
           <small>Código {result.result_code}</small>
