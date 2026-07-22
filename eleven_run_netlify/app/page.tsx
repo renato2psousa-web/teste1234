@@ -125,144 +125,122 @@ function ResultPage({ code }: { code: string }) {
       loadClientImage("/finale/photographer-02.png"),
     ]);
 
-    ctx.fillStyle = "#03111d";
+    ctx.fillStyle = "#020812";
     ctx.fillRect(0, 0, 1080, 1920);
 
-    if (background) {
-      drawCover(background, 0, 0, 1080, 1920);
-    }
+    if (background) drawCover(background, 0, 0, 1080, 1920);
 
-    const pageGradient = ctx.createLinearGradient(0, 0, 0, 1920);
-    pageGradient.addColorStop(0, "rgba(2, 9, 18, 0.32)");
-    pageGradient.addColorStop(0.18, "rgba(2, 9, 18, 0.58)");
-    pageGradient.addColorStop(0.56, "rgba(2, 9, 18, 0.76)");
-    pageGradient.addColorStop(1, "rgba(2, 8, 15, 0.96)");
-    ctx.fillStyle = pageGradient;
+    const fullOverlay = ctx.createLinearGradient(0, 0, 0, 1920);
+    fullOverlay.addColorStop(0, "rgba(2,7,15,.38)");
+    fullOverlay.addColorStop(.30, "rgba(2,7,15,.52)");
+    fullOverlay.addColorStop(.64, "rgba(2,7,15,.30)");
+    fullOverlay.addColorStop(1, "rgba(2,7,15,.95)");
+    ctx.fillStyle = fullOverlay;
     ctx.fillRect(0, 0, 1080, 1920);
 
-    const warmGlow = ctx.createRadialGradient(860, 240, 80, 860, 240, 520);
-    warmGlow.addColorStop(0, "rgba(255, 117, 20, 0.22)");
-    warmGlow.addColorStop(1, "rgba(255, 117, 20, 0)");
-    ctx.fillStyle = warmGlow;
-    ctx.fillRect(0, 0, 1080, 1920);
+    const topGlow = ctx.createRadialGradient(540, 280, 80, 540, 280, 620);
+    topGlow.addColorStop(0, "rgba(255,122,31,.22)");
+    topGlow.addColorStop(1, "rgba(255,122,31,0)");
+    ctx.fillStyle = topGlow;
+    ctx.fillRect(0, 0, 1080, 900);
 
-    const panelGradient = ctx.createLinearGradient(0, 160, 0, 1760);
-    panelGradient.addColorStop(0, "rgba(5, 10, 18, 0.92)");
-    panelGradient.addColorStop(0.45, "rgba(7, 14, 24, 0.76)");
-    panelGradient.addColorStop(1, "rgba(4, 8, 14, 0.90)");
-    ctx.fillStyle = panelGradient;
-    roundedRect(58, 74, 964, 1770, 56);
-    ctx.fill();
-    ctx.strokeStyle = "rgba(255,255,255,0.10)";
-    ctx.lineWidth = 2;
+    ctx.strokeStyle = "rgba(255,122,31,.65)";
+    ctx.lineWidth = 3;
+    roundedRect(30, 30, 1020, 1860, 44);
+    ctx.stroke();
+    ctx.strokeStyle = "rgba(255,255,255,.10)";
+    ctx.lineWidth = 1;
+    roundedRect(42, 42, 996, 1836, 38);
     ctx.stroke();
 
     ctx.textAlign = "center";
     ctx.fillStyle = "#ffffff";
-    ctx.font = "900 80px Arial";
-    ctx.fillText("FAMILY WEEK", 540, 206);
+    ctx.font = "900 82px Arial";
+    ctx.fillText("FAMILY WEEK", 540, 170);
     ctx.fillStyle = "#ff7a1f";
     ctx.font = "800 42px Arial";
-    ctx.fillText("NO STUDIO ONZE", 540, 262);
+    ctx.fillText("NO STUDIO ONZE", 540, 228);
 
-    ctx.fillStyle = "rgba(154, 23, 12, 0.92)";
-    roundedRect(300, 318, 480, 88, 14);
+    ctx.fillStyle = "rgba(4,10,18,.88)";
+    roundedRect(220, 278, 640, 84, 18);
     ctx.fill();
-    ctx.fillStyle = "#ffffff";
-    ctx.font = "900 40px Arial";
-    ctx.fillText("JORNADA CONCLUÍDA", 540, 375);
+    ctx.strokeStyle = "rgba(255,122,31,.85)";
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.fillStyle = "#ff8a2a";
+    ctx.font = "900 38px Arial";
+    ctx.fillText("JORNADA CONCLUÍDA", 540, 332);
 
     const graduateName = (result.graduate?.display_name || result.graduate?.name || "FORMANDO").toUpperCase();
     ctx.fillStyle = "#ffffff";
-    ctx.font = graduateName.length > 22 ? "900 62px Arial" : "900 78px Arial";
+    ctx.shadowColor = "rgba(255,122,31,.45)";
+    ctx.shadowBlur = 18;
+    ctx.font = graduateName.length > 22 ? "900 66px Arial" : "900 88px Arial";
     const words = graduateName.split(" ");
     const lines: string[] = [];
     let line = "";
     for (const word of words) {
       const testLine = `${line} ${word}`.trim();
-      if (ctx.measureText(testLine).width > 820 && line) {
-        lines.push(line);
-        line = word;
-      } else {
-        line = testLine;
-      }
+      if (ctx.measureText(testLine).width > 880 && line) { lines.push(line); line = word; }
+      else line = testLine;
     }
     if (line) lines.push(line);
-    lines.slice(0, 2).forEach((value, index) => {
-      ctx.fillText(value, 540, 520 + index * 84);
-    });
+    lines.slice(0,2).forEach((value,index)=>ctx.fillText(value,540,462+index*88));
+    ctx.shadowBlur = 0;
 
-    ctx.fillStyle = "rgba(255,255,255,0.05)";
-    roundedRect(96, 642, 888, 520, 36);
+    if (photographerOne) drawContain(photographerOne, 60, 680, 290, 560);
+    if (graduateImage) drawContain(graduateImage, 345, 580, 390, 700);
+    if (photographerTwo) drawContain(photographerTwo, 740, 690, 280, 550);
+
+    const floorGlow = ctx.createRadialGradient(540, 1190, 40, 540, 1190, 430);
+    floorGlow.addColorStop(0, "rgba(255,122,31,.36)");
+    floorGlow.addColorStop(1, "rgba(255,122,31,0)");
+    ctx.fillStyle = floorGlow;
+    ctx.fillRect(80, 980, 920, 420);
+
+    const metricsGradient = ctx.createLinearGradient(0, 1260, 0, 1510);
+    metricsGradient.addColorStop(0, "rgba(5,11,20,.96)");
+    metricsGradient.addColorStop(1, "rgba(2,7,14,.97)");
+    ctx.fillStyle = metricsGradient;
+    roundedRect(62, 1260, 956, 242, 34);
     ctx.fill();
-
-    if (background) {
-      ctx.save();
-      roundedRect(96, 642, 888, 520, 36);
-      ctx.clip();
-      drawCover(background, 96, 642, 888, 520);
-      const stageGradient = ctx.createLinearGradient(0, 642, 0, 1162);
-      stageGradient.addColorStop(0, "rgba(5, 11, 20, 0.05)");
-      stageGradient.addColorStop(1, "rgba(5, 11, 20, 0.72)");
-      ctx.fillStyle = stageGradient;
-      ctx.fillRect(96, 642, 888, 520);
-      ctx.restore();
-    }
-
-    ctx.fillStyle = "rgba(5, 10, 18, 0.42)";
-    ctx.fillRect(96, 972, 888, 190);
-
-    if (photographerOne) drawContain(photographerOne, 136, 730, 220, 360);
-    if (graduateImage) drawContain(graduateImage, 398, 676, 282, 430);
-    if (photographerTwo) drawContain(photographerTwo, 722, 740, 220, 350);
-
-    ctx.fillStyle = "rgba(5, 10, 18, 0.88)";
-    roundedRect(88, 1198, 904, 196, 28);
-    ctx.fill();
-    ctx.strokeStyle = "rgba(255,255,255,0.10)";
+    ctx.strokeStyle = "rgba(255,122,31,.88)";
+    ctx.lineWidth = 3;
     ctx.stroke();
 
     const metrics = [
-      { label: "lugar", value: position ? `${position}º` : "—" },
-      { label: "pontos", value: result.score.toLocaleString("pt-BR") },
-      { label: "Pontos Elevens", value: String(result.elevens_confirmed) },
+      { icon: "🏅", label: "lugar", value: position ? `${position}º` : "—" },
+      { icon: "★", label: "pontos", value: result.score.toLocaleString("pt-BR") },
+      { icon: "11", label: "Pontos Elevens", value: String(result.elevens_confirmed) },
     ];
-    metrics.forEach((metric, index) => {
-      const startX = 88 + index * (904 / 3);
-      if (index < 2) {
-        ctx.strokeStyle = "rgba(255,255,255,0.08)";
-        ctx.beginPath();
-        ctx.moveTo(startX + 904 / 3, 1228);
-        ctx.lineTo(startX + 904 / 3, 1362);
-        ctx.stroke();
-      }
-      ctx.fillStyle = "#ff7a1f";
-      ctx.font = "900 68px Arial";
-      ctx.fillText(metric.value, startX + 904 / 6, 1288);
-      ctx.fillStyle = "#b2bcc9";
-      ctx.font = "500 24px Arial";
-      ctx.fillText(metric.label, startX + 904 / 6, 1340);
+    metrics.forEach((metric,index)=>{
+      const boxW=956/3; const cx=62+boxW*index+boxW/2;
+      if(index<2){ctx.strokeStyle="rgba(255,255,255,.10)";ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(62+boxW*(index+1),1296);ctx.lineTo(62+boxW*(index+1),1466);ctx.stroke();}
+      ctx.fillStyle="#ff8a2a";ctx.font="900 34px Arial";ctx.fillText(metric.icon,cx,1324);
+      ctx.fillStyle="#ffffff";ctx.font="900 66px Arial";ctx.fillText(metric.value,cx,1402);
+      ctx.fillStyle="#ff8a2a";ctx.font="700 26px Arial";ctx.fillText(metric.label,cx,1452);
     });
 
-    ctx.fillStyle = "rgba(5, 10, 18, 0.82)";
-    roundedRect(88, 1426, 904, 112, 26);
+    ctx.fillStyle = "rgba(4,10,18,.84)";
+    roundedRect(190, 1538, 700, 92, 24);
     ctx.fill();
-    ctx.fillStyle = "#c9d1db";
-    ctx.font = "500 40px Arial";
-    ctx.fillText(`Jogado por ${result.helper_name}`, 540, 1496);
+    ctx.strokeStyle = "rgba(255,122,31,.42)";
+    ctx.stroke();
+    ctx.fillStyle = "#ffffff";
+    ctx.font = "600 36px Arial";
+    ctx.fillText(`Jogado por ${result.helper_name}`, 540, 1596);
 
-    ctx.fillStyle = "#f3f5f8";
-    ctx.font = "600 40px Arial";
-    ctx.fillText("Você viveu cada fase.", 540, 1636);
-    ctx.fillText("Nós registramos cada momento.", 540, 1694);
+    ctx.fillStyle = "#ffffff";
+    ctx.font = "600 34px Arial";
+    ctx.fillText("Você viveu cada fase.", 540, 1690);
+    ctx.fillText("Nós registramos cada momento.", 540, 1738);
 
     ctx.fillStyle = "#ff7a1f";
     ctx.font = "900 50px Arial";
-    ctx.fillText("@studioonze", 540, 1788);
-
-    ctx.fillStyle = "rgba(255,255,255,0.72)";
-    ctx.font = "600 24px Arial";
-    ctx.fillText(`Código ${result.result_code}`, 540, 1844);
+    ctx.fillText("@studioonze", 540, 1820);
+    ctx.fillStyle = "rgba(255,255,255,.64)";
+    ctx.font = "500 22px Arial";
+    ctx.fillText(`Código ${result.result_code}`, 540, 1860);
 
     return canvas;
   }, [position, result]);
