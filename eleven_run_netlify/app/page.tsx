@@ -8,6 +8,8 @@ type ObstacleKind = "backpack" | "cart" | "banner" | "sampleTray" | "microscopeC
 type Obstacle = { x: number; kind: ObstacleKind; passed: boolean };
 type Coin = { x: number; y: number; taken: boolean };
 type SoundName = "start" | "jump" | "coin" | "collision" | "phase" | "flash" | "victory";
+type Graduate = { id: number; name: string; display_name: string; contract: string };
+type SavedResult = { result_code: string; elevens_confirmed: number; completion_bonus: number; position: number | null };
 
 const SPEED_RAMP_SECONDS = 110;
 const STAGE_SECONDS = 40;
@@ -55,8 +57,87 @@ export default function Home() {
   const [soundOn, setSoundOn] = useState(true);
   const [graduate, setGraduate] = useState("");
   const [helperName, setHelperName] = useState("");
+  const [graduates, setGraduates] = useState<Graduate[]>([]);
+  const [graduatesLoading, setGraduatesLoading] = useState(true);
+  const [graduatesError, setGraduatesError] = useState("");
+  const [savingResult, setSavingResult] = useState(false);
+  const [savedResult, setSavedResult] = useState<SavedResult | null>(null);
+  const [saveError, setSaveError] = useState("");
+  const resultSavedRef = useRef(false);
   const touchStartRef = useRef<{ x: number; y: number; handled: boolean; action: "jump" | "duck" | null } | null>(null);
-  const graduates = ["Artur Morais", "Elen Ludmilla", "Flávia", "Judi Emily", "Leonardo Ferreira", "Luan Brito", "Maria Teresa", "Matheus Godoy"];
+
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadGraduates = async () => {
+      try {
+        setGraduatesLoading(true);
+        const response = await fetch("/.netlify/functions/get-graduates?event_code=MED15-UNIRV-AP-2026", { cache: "no-store" });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data?.error || "Não foi possível carregar os formandos.");
+        if (!cancelled) {
+          setGraduates(Array.isArray(data.graduates) ? data.graduates : []);
+          setGraduatesError("");
+        }
+      } catch (error) {
+        if (!cancelled) setGraduatesError(error instanceof Error ? error.message : "Não foi possível carregar os formandos.");
+      } finally {
+        if (!cancelled) setGraduatesLoading(false);
+      }
+    };
+    void loadGraduates();
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    if (view.mode !== "won" || resultSavedRef.current || !graduate) return;
+    resultSavedRef.current = true;
+    const save = async () => {
+      try {
+        setSavingResult(true);
+        setSaveError("");
+        const selected = graduates.find(item => String(item.id) === graduate);
+        if (!selected) throw new Error("Formando selecionado não encontrado.");
+        const response = await fetch("/.netlify/functions/save-score", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            event_code: "MED15-UNIRV-AP-2026",
+            graduate_id: selected.id,
+            helper_name: helperName.trim(),
+            score: view.score,
+            elevens_collected: view.coins,
+            completed: true,
+            duration_seconds: GAME_SECONDS
+          })
+        });
+        const saved = await response.json();
+        if (!response.ok) throw new Error(saved?.error || "Não foi possível salvar o resultado.");
+
+        let position: number | null = null;
+        const rankingResponse = await fetch("/.netlify/functions/get-ranking?event_code=MED15-UNIRV-AP-2026", { cache: "no-store" });
+        if (rankingResponse.ok) {
+          const ranking = await rankingResponse.json();
+          const row = Array.isArray(ranking.accumulated)
+            ? ranking.accumulated.find((item: { graduate_id: number }) => item.graduate_id === selected.id)
+            : null;
+          position = row?.position ?? null;
+        }
+
+        setSavedResult({
+          result_code: saved.result_code,
+          elevens_confirmed: saved.elevens_confirmed,
+          completion_bonus: saved.completion_bonus,
+          position
+        });
+      } catch (error) {
+        setSaveError(error instanceof Error ? error.message : "Não foi possível salvar o resultado.");
+      } finally {
+        setSavingResult(false);
+      }
+    };
+    void save();
+  }, [graduate, graduates, helperName, view.coins, view.mode, view.score]);
 
   const note = useCallback((frequency: number, duration: number, volume: number, type: OscillatorType = "sine", delay = 0) => {
     const audio = audioRef.current;
@@ -129,6 +210,9 @@ export default function Home() {
 
   const start = useCallback(() => {
     if (!graduate || !helperName.trim()) return;
+    resultSavedRef.current = false;
+    setSavedResult(null);
+    setSaveError("");
     const ctx = ensureAudio();
     const finaleTest = window.location.hostname === "terminal.local" && new URLSearchParams(window.location.search).has("finale");
     stateRef.current = { mode: "countdown", y: 0, vy: 0, ducking: false, score: 0, coins: 0, elapsed: finaleTest ? 158 : 0, celebration: 0, speed: finaleTest ? 850 : 340, distance: finaleTest ? 32000 : 0, spawnAt: finaleTest ? 32650 : 650, obstacles: [], coinItems: [], last: performance.now(), lastStageCue: finaleTest ? 3 : 0, transitionRemaining: 0, transitionStage: null, lastFlashCue: -1, photoMomentActive: false, photoMomentElapsed: 0, photoMomentsTriggered: 0, photoMomentIndex: -1, photoMomentFlashPlayed: false };
@@ -638,15 +722,15 @@ export default function Home() {
         <div className="start-copy"><span className="eyebrow">SUA JORNADA COMEÇA AGORA</span><h1>Corra rumo à<br/><em>Formatura.</em></h1><p>Colete Pontos Elevens, supere os obstáculos do campus e avance na sua jornada da Medicina.</p></div>
         <img className="hero-character" src="/characters/run/frame-01.png" alt="Personagem médica do Elevens Run" />
         <div className="identity-card">
-          <label><span>FORMANDO</span><select value={graduate} onChange={event=>setGraduate(event.target.value)}><option value="">Selecione ou pesquise o formando</option>{graduates.map(name=><option key={name} value={name}>{name}</option>)}</select></label>
+          <label><span>FORMANDO</span><select value={graduate} onChange={event=>setGraduate(event.target.value)} disabled={graduatesLoading||!!graduatesError}><option value="">{graduatesLoading?"Carregando formandos...":graduatesError?"Erro ao carregar formandos":"Selecione o formando"}</option>{graduates.map(item=><option key={item.id} value={String(item.id)}>{item.display_name}</option>)}</select>{graduatesError&&<small className="form-error">{graduatesError}</small>}</label>
           <label><span>QUEM ESTÁ AJUDANDO HOJE?</span><input value={helperName} onChange={event=>setHelperName(event.target.value)} placeholder="Digite o nome de quem está ajudando" autoComplete="name" /></label>
           <button className="start-button" onClick={start} disabled={!graduate||!helperName.trim()}>INICIAR JORNADA <span>→</span></button>
           <div className="gesture-guide"><span>☝️ <b>Deslize para cima</b><small>para pular</small></span><i/><span>👇 <b>Deslize para baixo</b><small>para abaixar</small></span></div>
         </div>
       </div>}
       {view.mode==="transition"&&phaseTransition&&<div className="phase-transition-overlay"><div className="phase-transition-card"><span>PRÓXIMA ETAPA</span><h2>{phaseTransition.stage==="laboratory"?"LABORATÓRIO":phaseTransition.stage==="hospital"?"INTERNATO":"COLAÇÃO"}</h2><p>{phaseTransition.stage==="laboratory"?"Uma nova etapa de aprendizado, prática e descobertas.":phaseTransition.stage==="hospital"?"A rotina se intensifica e os desafios ficam mais exigentes.":"A reta final da jornada até a conquista da formatura."}</p><small>Continuando em {Math.max(1,Math.ceil(phaseTransition.remaining))}s</small></div></div>}
-      {view.mode==="countdown"&&<div className="countdown-overlay"><div className="countdown-card"><span className="countdown-kicker">PREPARE-SE, {graduate}</span><strong>{countdown}</strong><div className="countdown-gestures"><span>↑ <b>Deslize para cima</b><small>para pular</small></span><span>↓ <b>Deslize para baixo</b><small>para abaixar</small></span></div></div></div>}
-      {view.mode!=="ready"&&view.mode!=="playing"&&view.mode!=="countdown"&&view.mode!=="celebrating"&&view.mode!=="transition"&&<div className={view.mode==="won"?"overlay victory-overlay":"overlay"}><div className="modal"><span className="eyebrow">{view.mode==="won"?"JORNADA CONCLUÍDA":"PLANTÃO ENCERRADO"}</span><h1>{view.mode==="won"?<>Você chegou à<br/><em>Formatura!</em></>:<>Quase! Tente<br/><em>mais uma vez.</em></>}</h1><p>{graduate && <strong>{graduate}: </strong>}Sua pontuação foi {view.score} com {view.coins} Pontos Elevens.</p><button onClick={start}>JOGAR NOVAMENTE<span>→</span></button></div></div>}
+      {view.mode==="countdown"&&<div className="countdown-overlay"><div className="countdown-card"><span className="countdown-kicker">PREPARE-SE, {graduates.find(item=>String(item.id)===graduate)?.display_name||"FORMANDO"}</span><strong>{countdown}</strong><div className="countdown-gestures"><span>↑ <b>Deslize para cima</b><small>para pular</small></span><span>↓ <b>Deslize para baixo</b><small>para abaixar</small></span></div></div></div>}
+      {view.mode!=="ready"&&view.mode!=="playing"&&view.mode!=="countdown"&&view.mode!=="celebrating"&&view.mode!=="transition"&&<div className={view.mode==="won"?"overlay victory-overlay":"overlay"}><div className="modal"><span className="eyebrow">{view.mode==="won"?"JORNADA CONCLUÍDA":"PLANTÃO ENCERRADO"}</span><h1>{view.mode==="won"?<>Você chegou à<br/><em>Formatura!</em></>:<>Quase! Tente<br/><em>mais uma vez.</em></>}</h1><p>{graduate && <strong>{graduates.find(item=>String(item.id)===graduate)?.display_name}: </strong>}Sua pontuação foi {view.score} com {view.coins} Pontos Elevens.</p>{view.mode==="won"&&<div className="ranking-status">{savingResult&&<p>Registrando sua conquista...</p>}{savedResult&&<><p><strong>{savedResult.elevens_confirmed} Pontos Elevens confirmados</strong> — inclui bônus de {savedResult.completion_bonus}.</p><p>{savedResult.position?<>Você está em <strong>{savedResult.position}º lugar</strong> no ranking acumulado.</>:<>Resultado confirmado no ranking.</>}</p><small>Código do resultado: {savedResult.result_code}</small></>}{saveError&&<p className="form-error">{saveError}</p>}</div>}<button onClick={start} disabled={savingResult}>JOGAR NOVAMENTE<span>→</span></button></div></div>}
     </section>
     <footer><span>STUDIO ONZE • ELEVENS RUN</span><span className="legend"><i/> TOUCH-SCREEN <i/> JORNADA DA MEDICINA</span></footer>
   </main>;

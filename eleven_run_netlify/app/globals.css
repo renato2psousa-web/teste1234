@@ -34,3 +34,5 @@
   .phase-transition-card h2{font-size:34px;margin:6px 0}.phase-transition-card p{font-size:12px;margin-bottom:9px}.phase-transition-card small{font-size:10px}
   .modal{width:min(460px,78%);padding:18px}.modal h1{font-size:42px}.modal p{font-size:13px}
 }
+
+.form-error{display:block;margin-top:6px;color:#ff9b8f;font-size:12px}.ranking-status{margin:14px 0;padding:12px 14px;border:1px solid rgba(255,122,25,.35);border-radius:14px;background:rgba(5,12,22,.68)}.ranking-status p{margin:5px 0}.ranking-status small{display:block;margin-top:8px;color:#9fb2c8}
