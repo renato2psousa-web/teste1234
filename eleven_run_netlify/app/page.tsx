@@ -31,6 +31,17 @@ type RankingRow = { position: number; graduate_id: number; graduate_name: string
 
 function navigate(path: string) { window.location.href = path; }
 
+async function loadClientImage(src: string): Promise<HTMLImageElement | null> {
+  if (typeof Image === "undefined") return null;
+  return new Promise((resolve) => {
+    const image = new Image();
+    image.crossOrigin = "anonymous";
+    image.onload = () => resolve(image);
+    image.onerror = () => resolve(null);
+    image.src = src;
+  });
+}
+
 function ResultPage({ code }: { code: string }) {
   const [result, setResult] = useState<ResultData | null>(null);
   const [position, setPosition] = useState<number | null>(null);
@@ -51,65 +62,302 @@ function ResultPage({ code }: { code: string }) {
           const row = Array.isArray(ranking.accumulated) ? ranking.accumulated.find((item: RankingRow) => item.graduate_id === data.graduate_id) : null;
           currentPosition = row?.position ?? null;
         }
-        if (!cancelled) { setResult(data); setPosition(currentPosition); }
-      } catch (err) { if (!cancelled) setError(err instanceof Error ? err.message : "Não foi possível abrir o resultado."); }
-      finally { if (!cancelled) setLoading(false); }
+        if (!cancelled) {
+          setResult(data);
+          setPosition(currentPosition);
+        }
+      } catch (err) {
+        if (!cancelled) setError(err instanceof Error ? err.message : "Não foi possível abrir o resultado.");
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
     };
     void load();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [code]);
 
-  const storyCanvas = useCallback(() => {
+  const buildStoryCanvas = useCallback(async () => {
     if (!result) return null;
     const canvas = document.createElement("canvas");
-    canvas.width = 1080; canvas.height = 1920;
-    const ctx = canvas.getContext("2d"); if (!ctx) return null;
-    const gradient = ctx.createLinearGradient(0, 0, 0, 1920);
-    gradient.addColorStop(0, "#071526"); gradient.addColorStop(.55, "#09101a"); gradient.addColorStop(1, "#030609");
-    ctx.fillStyle = gradient; ctx.fillRect(0,0,1080,1920);
-    ctx.fillStyle = "rgba(255,106,0,.14)"; ctx.beginPath(); ctx.arc(900,300,420,0,Math.PI*2); ctx.fill();
-    ctx.fillStyle = "rgba(255,255,255,.04)"; ctx.beginPath(); ctx.arc(170,1320,360,0,Math.PI*2); ctx.fill();
+    canvas.width = 1080;
+    canvas.height = 1920;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return null;
+
+    const roundedRect = (x: number, y: number, width: number, height: number, radius: number) => {
+      ctx.beginPath();
+      ctx.moveTo(x + radius, y);
+      ctx.lineTo(x + width - radius, y);
+      ctx.quadraticCurveTo(x + width, y, x + width, y + radius);
+      ctx.lineTo(x + width, y + height - radius);
+      ctx.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
+      ctx.lineTo(x + radius, y + height);
+      ctx.quadraticCurveTo(x, y + height, x, y + height - radius);
+      ctx.lineTo(x, y + radius);
+      ctx.quadraticCurveTo(x, y, x + radius, y);
+      ctx.closePath();
+    };
+
+    const drawContain = (image: HTMLImageElement, x: number, y: number, width: number, height: number) => {
+      const ratio = Math.min(width / image.width, height / image.height);
+      const drawWidth = image.width * ratio;
+      const drawHeight = image.height * ratio;
+      const drawX = x + (width - drawWidth) / 2;
+      const drawY = y + (height - drawHeight) / 2;
+      ctx.drawImage(image, drawX, drawY, drawWidth, drawHeight);
+    };
+
+    const drawCover = (image: HTMLImageElement, x: number, y: number, width: number, height: number) => {
+      const ratio = Math.max(width / image.width, height / image.height);
+      const drawWidth = image.width * ratio;
+      const drawHeight = image.height * ratio;
+      const drawX = x + (width - drawWidth) / 2;
+      const drawY = y + (height - drawHeight) / 2;
+      ctx.drawImage(image, drawX, drawY, drawWidth, drawHeight);
+    };
+
+    const [background, photographerOne, graduateImage, photographerTwo] = await Promise.all([
+      loadClientImage("/backgrounds/graduation-01.png"),
+      loadClientImage("/finale/photographer-01.png"),
+      loadClientImage("/finale/character-victory.png"),
+      loadClientImage("/finale/photographer-02.png"),
+    ]);
+
+    ctx.fillStyle = "#03111d";
+    ctx.fillRect(0, 0, 1080, 1920);
+
+    if (background) {
+      drawCover(background, 0, 0, 1080, 1920);
+    }
+
+    const pageGradient = ctx.createLinearGradient(0, 0, 0, 1920);
+    pageGradient.addColorStop(0, "rgba(2, 9, 18, 0.32)");
+    pageGradient.addColorStop(0.18, "rgba(2, 9, 18, 0.58)");
+    pageGradient.addColorStop(0.56, "rgba(2, 9, 18, 0.76)");
+    pageGradient.addColorStop(1, "rgba(2, 8, 15, 0.96)");
+    ctx.fillStyle = pageGradient;
+    ctx.fillRect(0, 0, 1080, 1920);
+
+    const warmGlow = ctx.createRadialGradient(860, 240, 80, 860, 240, 520);
+    warmGlow.addColorStop(0, "rgba(255, 117, 20, 0.22)");
+    warmGlow.addColorStop(1, "rgba(255, 117, 20, 0)");
+    ctx.fillStyle = warmGlow;
+    ctx.fillRect(0, 0, 1080, 1920);
+
+    const panelGradient = ctx.createLinearGradient(0, 160, 0, 1760);
+    panelGradient.addColorStop(0, "rgba(5, 10, 18, 0.92)");
+    panelGradient.addColorStop(0.45, "rgba(7, 14, 24, 0.76)");
+    panelGradient.addColorStop(1, "rgba(4, 8, 14, 0.90)");
+    ctx.fillStyle = panelGradient;
+    roundedRect(58, 74, 964, 1770, 56);
+    ctx.fill();
+    ctx.strokeStyle = "rgba(255,255,255,0.10)";
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
     ctx.textAlign = "center";
-    ctx.fillStyle = "#ffffff"; ctx.font = "900 64px Arial"; ctx.fillText("FAMILY WEEK",540,170);
-    ctx.fillStyle = "#ff7614"; ctx.font = "800 38px Arial"; ctx.fillText("NO STUDIO ONZE",540,225);
-    ctx.fillStyle = "#ff7614"; ctx.fillRect(330,285,420,70);
-    ctx.fillStyle = "#ffffff"; ctx.font = "900 32px Arial"; ctx.fillText("JORNADA CONCLUÍDA",540,332);
-    const name=(result.graduate?.display_name || result.graduate?.name || "FORMANDO").toUpperCase();
-    ctx.fillStyle = "#ffffff"; ctx.font = name.length > 24 ? "900 54px Arial" : "900 72px Arial";
-    const parts=name.split(' '); let line=''; const lines=[];
-    for(const part of parts){const test=(line+' '+part).trim(); if(ctx.measureText(test).width>900&&line){lines.push(line);line=part}else line=test} if(line)lines.push(line);
-    lines.slice(0,2).forEach((value,index)=>ctx.fillText(value,540,500+index*82));
-    ctx.strokeStyle = "rgba(255,255,255,.18)"; ctx.lineWidth=2; ctx.strokeRect(110,720,860,390);
-    const metrics=[{label:"LUGAR",value:position?`${position}º`:"—"},{label:"PONTUAÇÃO",value:result.score.toLocaleString('pt-BR')},{label:"PONTOS ELEVENS",value:String(result.elevens_confirmed)}];
-    metrics.forEach((m,i)=>{const x=250+i*290; ctx.fillStyle="#ff7614"; ctx.font="900 58px Arial";ctx.fillText(m.value,x,875);ctx.fillStyle="#aeb8c6";ctx.font="700 22px Arial";ctx.fillText(m.label,x,925)});
-    ctx.fillStyle = "#d9dfe7"; ctx.font="500 30px Arial"; ctx.fillText(`Jogado por ${result.helper_name}`,540,1035);
-    ctx.fillStyle = "#ffffff"; ctx.font="700 36px Arial"; ctx.fillText("Você viveu cada fase.",540,1320); ctx.fillText("Nós registramos cada momento.",540,1370);
-    ctx.fillStyle = "#ff7614"; ctx.font="900 44px Arial"; ctx.fillText("@studioonze",540,1610);
-    ctx.fillStyle = "#ffffff"; ctx.font="900 52px Arial"; ctx.fillText("STUDIO ONZE",540,1760);
-    ctx.fillStyle = "#7e8998"; ctx.font="600 20px Arial"; ctx.fillText(`Código ${result.result_code}`,540,1820);
+    ctx.fillStyle = "#ffffff";
+    ctx.font = "900 80px Arial";
+    ctx.fillText("FAMILY WEEK", 540, 206);
+    ctx.fillStyle = "#ff7a1f";
+    ctx.font = "800 42px Arial";
+    ctx.fillText("NO STUDIO ONZE", 540, 262);
+
+    ctx.fillStyle = "rgba(154, 23, 12, 0.92)";
+    roundedRect(300, 318, 480, 88, 14);
+    ctx.fill();
+    ctx.fillStyle = "#ffffff";
+    ctx.font = "900 40px Arial";
+    ctx.fillText("JORNADA CONCLUÍDA", 540, 375);
+
+    const graduateName = (result.graduate?.display_name || result.graduate?.name || "FORMANDO").toUpperCase();
+    ctx.fillStyle = "#ffffff";
+    ctx.font = graduateName.length > 22 ? "900 62px Arial" : "900 78px Arial";
+    const words = graduateName.split(" ");
+    const lines: string[] = [];
+    let line = "";
+    for (const word of words) {
+      const testLine = `${line} ${word}`.trim();
+      if (ctx.measureText(testLine).width > 820 && line) {
+        lines.push(line);
+        line = word;
+      } else {
+        line = testLine;
+      }
+    }
+    if (line) lines.push(line);
+    lines.slice(0, 2).forEach((value, index) => {
+      ctx.fillText(value, 540, 520 + index * 84);
+    });
+
+    ctx.fillStyle = "rgba(255,255,255,0.05)";
+    roundedRect(96, 642, 888, 520, 36);
+    ctx.fill();
+
+    if (background) {
+      ctx.save();
+      roundedRect(96, 642, 888, 520, 36);
+      ctx.clip();
+      drawCover(background, 96, 642, 888, 520);
+      const stageGradient = ctx.createLinearGradient(0, 642, 0, 1162);
+      stageGradient.addColorStop(0, "rgba(5, 11, 20, 0.05)");
+      stageGradient.addColorStop(1, "rgba(5, 11, 20, 0.72)");
+      ctx.fillStyle = stageGradient;
+      ctx.fillRect(96, 642, 888, 520);
+      ctx.restore();
+    }
+
+    ctx.fillStyle = "rgba(5, 10, 18, 0.42)";
+    ctx.fillRect(96, 972, 888, 190);
+
+    if (photographerOne) drawContain(photographerOne, 136, 730, 220, 360);
+    if (graduateImage) drawContain(graduateImage, 398, 676, 282, 430);
+    if (photographerTwo) drawContain(photographerTwo, 722, 740, 220, 350);
+
+    ctx.fillStyle = "rgba(5, 10, 18, 0.88)";
+    roundedRect(88, 1198, 904, 196, 28);
+    ctx.fill();
+    ctx.strokeStyle = "rgba(255,255,255,0.10)";
+    ctx.stroke();
+
+    const metrics = [
+      { label: "lugar", value: position ? `${position}º` : "—" },
+      { label: "pontos", value: result.score.toLocaleString("pt-BR") },
+      { label: "Pontos Elevens", value: String(result.elevens_confirmed) },
+    ];
+    metrics.forEach((metric, index) => {
+      const startX = 88 + index * (904 / 3);
+      if (index < 2) {
+        ctx.strokeStyle = "rgba(255,255,255,0.08)";
+        ctx.beginPath();
+        ctx.moveTo(startX + 904 / 3, 1228);
+        ctx.lineTo(startX + 904 / 3, 1362);
+        ctx.stroke();
+      }
+      ctx.fillStyle = "#ff7a1f";
+      ctx.font = "900 68px Arial";
+      ctx.fillText(metric.value, startX + 904 / 6, 1288);
+      ctx.fillStyle = "#b2bcc9";
+      ctx.font = "500 24px Arial";
+      ctx.fillText(metric.label, startX + 904 / 6, 1340);
+    });
+
+    ctx.fillStyle = "rgba(5, 10, 18, 0.82)";
+    roundedRect(88, 1426, 904, 112, 26);
+    ctx.fill();
+    ctx.fillStyle = "#c9d1db";
+    ctx.font = "500 40px Arial";
+    ctx.fillText(`Jogado por ${result.helper_name}`, 540, 1496);
+
+    ctx.fillStyle = "#f3f5f8";
+    ctx.font = "600 40px Arial";
+    ctx.fillText("Você viveu cada fase.", 540, 1636);
+    ctx.fillText("Nós registramos cada momento.", 540, 1694);
+
+    ctx.fillStyle = "#ff7a1f";
+    ctx.font = "900 50px Arial";
+    ctx.fillText("@studioonze", 540, 1788);
+
+    ctx.fillStyle = "rgba(255,255,255,0.72)";
+    ctx.font = "600 24px Arial";
+    ctx.fillText(`Código ${result.result_code}`, 540, 1844);
+
     return canvas;
   }, [position, result]);
 
-  const saveImage = useCallback(() => { const canvas=storyCanvas(); if(!canvas)return; const link=document.createElement('a'); link.download=`family-week-${code}.png`; link.href=canvas.toDataURL('image/png'); link.click(); },[code,storyCanvas]);
+  const saveImage = useCallback(async () => {
+    const canvas = await buildStoryCanvas();
+    if (!canvas) return;
+    const link = document.createElement("a");
+    link.download = `family-week-${code}.png`;
+    link.href = canvas.toDataURL("image/png");
+    link.click();
+  }, [buildStoryCanvas, code]);
+
   const share = useCallback(async () => {
     if (!result) return;
-    const url=window.location.href; const text=`${result.graduate?.display_name || result.graduate?.name} concluiu a Jornada Elevens na Family Week no Studio Onze!`;
+    const url = window.location.href;
+    const text = `${result.graduate?.display_name || result.graduate?.name} concluiu a Jornada Elevens na Family Week no Studio Onze!`;
     try {
-      const canvas=storyCanvas();
+      const canvas = await buildStoryCanvas();
       if (canvas && navigator.share && navigator.canShare) {
-        const blob=await new Promise<Blob|null>(resolve=>canvas.toBlob(resolve,'image/png'));
-        if(blob){const file=new File([blob],`family-week-${code}.png`,{type:'image/png'}); if(navigator.canShare({files:[file]})){await navigator.share({title:'Family Week no Studio Onze',text,files:[file]});return;}}
+        const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/png"));
+        if (blob) {
+          const file = new File([blob], `family-week-${code}.png`, { type: "image/png" });
+          if (navigator.canShare({ files: [file] })) {
+            await navigator.share({ title: "Family Week no Studio Onze", text, files: [file] });
+            return;
+          }
+        }
       }
-      if(navigator.share) await navigator.share({title:'Family Week no Studio Onze',text,url}); else saveImage();
-    } catch { /* compartilhamento cancelado */ }
-  },[code,result,saveImage,storyCanvas]);
+      if (navigator.share) await navigator.share({ title: "Family Week no Studio Onze", text, url });
+      else await saveImage();
+    } catch {
+      /* compartilhamento cancelado */
+    }
+  }, [buildStoryCanvas, code, result, saveImage]);
 
   if (loading) return <main className="public-page center-page"><div className="loading-card">Preparando sua conquista…</div></main>;
-  if (error || !result) return <main className="public-page center-page"><div className="loading-card"><h1>Resultado indisponível</h1><p>{error}</p><button onClick={()=>navigate('/')}>Voltar ao jogo</button></div></main>;
-  const graduateName=result.graduate?.display_name || result.graduate?.name || "Formando";
+  if (error || !result) return <main className="public-page center-page"><div className="loading-card"><h1>Resultado indisponível</h1><p>{error}</p><button onClick={() => navigate("/")}>Voltar ao jogo</button></div></main>;
+
+  const graduateName = result.graduate?.display_name || result.graduate?.name || "Formando";
+
   return <main className="public-page result-page">
-    <section className="story-card"><div className="story-brand"><strong>FAMILY WEEK</strong><span>NO STUDIO ONZE</span></div><span className="story-ribbon">JORNADA CONCLUÍDA</span><h1>{graduateName}</h1><div className="story-hero"><img src="/finale/photographer-01.png" alt="Fotógrafo do Studio Onze"/><img className="graduate-victory" src="/finale/character-victory.png" alt="Personagem celebrando a formatura"/><img src="/finale/photographer-02.png" alt="Fotógrafo do Studio Onze"/></div><div className="story-metrics"><div><strong>{position?`${position}º`:'—'}</strong><span>lugar</span></div><div><strong>{result.score.toLocaleString('pt-BR')}</strong><span>pontos</span></div><div><strong>{result.elevens_confirmed}</strong><span>Pontos Elevens</span></div></div><p className="played-by">Jogado por {result.helper_name}</p><p className="campaign-line">Você viveu cada fase.<br/>Nós registramos cada momento.</p><b className="instagram">@studioonze</b></section>
-    <section className="result-actions"><button className="primary-action" onClick={share}>Compartilhar resultado</button><button onClick={saveImage}>Salvar imagem</button><button onClick={()=>navigate('/ranking')}>Ver ranking geral</button><button className="text-action" onClick={()=>navigate('/')}>Voltar ao jogo</button></section>
+    <section className="story-card story-card--share">
+      <div className="story-background" style={{ backgroundImage: "url('/backgrounds/graduation-01.png')" }} />
+      <div className="story-background-overlay" />
+      <div className="story-shell">
+        <div className="story-brand story-brand--large"><strong>FAMILY WEEK</strong><span>NO STUDIO ONZE</span></div>
+        <span className="story-ribbon story-ribbon--dark">JORNADA CONCLUÍDA</span>
+        <h1 className="story-name">{graduateName}</h1>
+
+        <div className="story-stage">
+          <div className="story-stage-bg" style={{ backgroundImage: "url('/backgrounds/graduation-01.png')" }} />
+          <div className="story-stage-overlay" />
+          <div className="story-stage-characters">
+            <img className="story-figure story-figure--left" src="/finale/photographer-01.png" alt="Fotógrafo do Studio Onze" />
+            <img className="story-figure story-figure--main" src="/finale/character-victory.png" alt="Personagem celebrando a formatura" />
+            <img className="story-figure story-figure--right" src="/finale/photographer-02.png" alt="Fotógrafo do Studio Onze" />
+          </div>
+        </div>
+
+        <div className="story-metrics story-metrics--showcase">
+          <div>
+            <strong>{position ? `${position}º` : "—"}</strong>
+            <span>lugar</span>
+          </div>
+          <div>
+            <strong>{result.score.toLocaleString("pt-BR")}</strong>
+            <span>pontos</span>
+          </div>
+          <div>
+            <strong>{result.elevens_confirmed}</strong>
+            <span>Pontos Elevens</span>
+          </div>
+        </div>
+
+        <p className="played-by story-helper">Jogado por {result.helper_name}</p>
+        <p className="campaign-line story-cta-copy">Você viveu cada fase.<br />Nós registramos cada momento.</p>
+        <div className="story-footer-brand">
+          <b className="instagram">@studioonze</b>
+          <small>Código {result.result_code}</small>
+        </div>
+      </div>
+    </section>
+
+    <section className="result-actions">
+      <div className="story-actions-intro">
+        <span>RESULTADO OFICIAL</span>
+        <h2>Compartilhe sua conquista</h2>
+        <p>Abra o card, salve a imagem e poste seu momento da Family Week no Studio Onze.</p>
+      </div>
+      <button className="primary-action" onClick={share}>Compartilhar resultado</button>
+      <button onClick={saveImage}>Salvar imagem</button>
+      <button onClick={() => navigate('/ranking')}>Ver ranking geral</button>
+      <button className="text-action" onClick={() => navigate('/')}>Voltar ao jogo</button>
+    </section>
   </main>;
 }
 
