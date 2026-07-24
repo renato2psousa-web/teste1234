@@ -11,6 +11,7 @@ type Coin = { x: number; y: number; taken: boolean };
 type SoundName = "start" | "jump" | "coin" | "collision" | "phase" | "flash" | "victory";
 type Graduate = { id: number; name: string; display_name: string; contract: string };
 type SavedResult = { result_code: string; elevens_confirmed: number; completion_bonus: number; position: number | null };
+type TestTarget = "campus" | "laboratory" | "hospital" | "graduation" | "final";
 
 const SPEED_RAMP_SECONDS = 110;
 const STAGE_SECONDS = 40;
@@ -362,6 +363,7 @@ export default function Home() {
 }
 
 function Game() {
+  const testMode = typeof window !== "undefined" && new URLSearchParams(window.location.search).has("teste");
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const rafRef = useRef(0);
   const characterImagesRef = useRef<HTMLImageElement[]>([]);
@@ -440,7 +442,7 @@ function Game() {
   }, []);
 
   useEffect(() => {
-    if (view.mode !== "won" || resultSavedRef.current || !graduate) return;
+    if (testMode || view.mode !== "won" || resultSavedRef.current || !graduate) return;
     resultSavedRef.current = true;
     const save = async () => {
       try {
@@ -487,7 +489,7 @@ function Game() {
       }
     };
     void save();
-  }, [graduate, graduates, helperName, view.coins, view.mode, view.score]);
+  }, [graduate, graduates, helperName, testMode, view.coins, view.mode, view.score]);
 
   const note = useCallback((frequency: number, duration: number, volume: number, type: OscillatorType = "sine", delay = 0) => {
     const audio = audioRef.current;
@@ -558,7 +560,7 @@ function Game() {
     setView({ mode: s.mode, score: Math.floor(s.score), coins: s.coins, time: Math.floor(s.elapsed), speed: +(s.speed / 340).toFixed(1), stage: s.elapsed >= 120 ? "graduation" : s.elapsed >= 80 ? "hospital" : s.elapsed >= 40 ? "laboratory" : "campus" });
   }, []);
 
-  const start = useCallback(() => {
+  const startAt = useCallback((target: TestTarget = "campus") => {
     if (!graduate || !helperName.trim() || !characterReady) return;
     setSavedResult(null);
     setSaveError("");
@@ -567,8 +569,16 @@ function Game() {
     setSavedResult(null);
     setSaveError("");
     const ctx = ensureAudio();
-    const finaleTest = window.location.hostname === "terminal.local" && new URLSearchParams(window.location.search).has("finale");
-    stateRef.current = { mode: "countdown", y: 0, vy: 0, ducking: false, score: 0, coins: 0, elapsed: finaleTest ? 158 : 0, celebration: 0, speed: finaleTest ? 850 : 340, distance: finaleTest ? 32000 : 0, spawnAt: finaleTest ? 32650 : 650, obstacles: [], coinItems: [], last: performance.now(), lastStageCue: finaleTest ? 3 : 0, transitionRemaining: 0, transitionStage: null, lastFlashCue: -1, photoMomentActive: false, photoMomentElapsed: 0, photoMomentsTriggered: 0, photoMomentIndex: -1, photoMomentFlashPlayed: false };
+    const startTimes: Record<TestTarget, number> = { campus: 0, laboratory: 40, hospital: 80, graduation: 120, final: GAME_SECONDS };
+    const elapsed = testMode ? startTimes[target] : 0;
+    const speed = 340 + (850 - 340) * Math.min(elapsed / SPEED_RAMP_SECONDS, 1);
+    stateRef.current = { mode: target === "final" && testMode ? "won" : "countdown", y: 0, vy: 0, ducking: false, score: target === "final" && testMode ? 12480 : Math.floor(elapsed * 28), coins: target === "final" && testMode ? 7 : 0, elapsed, celebration: target === "final" && testMode ? 4 : 0, speed, distance: elapsed * 200, spawnAt: elapsed * 200 + 650, obstacles: [], coinItems: [], last: performance.now(), lastStageCue: Math.floor(elapsed / STAGE_SECONDS), transitionRemaining: 0, transitionStage: null, lastFlashCue: -1, photoMomentActive: false, photoMomentElapsed: 0, photoMomentsTriggered: target === "campus" ? 0 : target === "laboratory" ? 1 : target === "hospital" ? 2 : 3, photoMomentIndex: -1, photoMomentFlashPlayed: false };
+    if (target === "final" && testMode) {
+      setCountdown(null);
+      playSound("victory");
+      sync();
+      return;
+    }
     setCountdown(3);
     sync();
 
@@ -592,7 +602,9 @@ function Game() {
       }, 3200);
     };
     void runCountdown();
-  }, [characterReady, ensureAudio, graduate, helperName, note, playSound, sync]);
+  }, [characterReady, ensureAudio, graduate, helperName, note, playSound, sync, testMode]);
+
+  const start = useCallback(() => startAt("campus"), [startAt]);
 
   const jump = useCallback(() => {
     const s = stateRef.current;
@@ -1070,6 +1082,17 @@ function Game() {
           <label className="graduate-search"><span>FORMANDO</span><input value={graduateQuery} onFocus={()=>setGraduateSearchOpen(true)} onBlur={()=>window.setTimeout(()=>setGraduateSearchOpen(false),140)} onChange={event=>{setGraduateQuery(event.target.value);setGraduate("");setGraduateSearchOpen(true)}} placeholder={graduatesLoading?"Carregando formandos...":"Digite o nome do formando"} disabled={graduatesLoading||!!graduatesError} autoComplete="off" role="combobox" aria-expanded={graduateSearchOpen}/>{graduateSearchOpen&&!graduatesLoading&&!graduatesError&&<div className="graduate-options">{graduates.filter(item=>item.display_name.toLocaleLowerCase('pt-BR').includes(graduateQuery.trim().toLocaleLowerCase('pt-BR'))).slice(0,8).map(item=><button type="button" key={item.id} onMouseDown={event=>event.preventDefault()} onClick={()=>{setGraduate(String(item.id));setGraduateQuery(item.display_name);setGraduateSearchOpen(false)}}><b>{item.display_name}</b><small>{item.contract}</small></button>)}{graduateQuery.trim()&&graduates.filter(item=>item.display_name.toLocaleLowerCase('pt-BR').includes(graduateQuery.trim().toLocaleLowerCase('pt-BR'))).length===0&&<p>Nenhum formando encontrado.</p>}</div>}{graduatesError&&<small className="form-error">{graduatesError}</small>}</label>
           <label><span>QUEM ESTÁ AJUDANDO HOJE?</span><input value={helperName} onChange={event=>setHelperName(event.target.value)} placeholder="Digite o nome de quem está ajudando" autoComplete="name" /></label>
           <button className="start-button" onClick={start} disabled={!graduate||!helperName.trim()||!characterReady}>{characterReady?"INICIAR JORNADA":"CARREGANDO PERSONAGEM…"} <span>→</span></button>
+          {testMode&&<div className="test-panel">
+            <div><strong>MODO DE TESTE</strong><small>Escolha onde deseja começar</small></div>
+            <div className="test-buttons">
+              <button type="button" onClick={()=>startAt("campus")} disabled={!graduate||!helperName.trim()||!characterReady}>Campus</button>
+              <button type="button" onClick={()=>startAt("laboratory")} disabled={!graduate||!helperName.trim()||!characterReady}>Laboratório</button>
+              <button type="button" onClick={()=>startAt("hospital")} disabled={!graduate||!helperName.trim()||!characterReady}>Internato</button>
+              <button type="button" onClick={()=>startAt("graduation")} disabled={!graduate||!helperName.trim()||!characterReady}>Colação</button>
+              <button type="button" className="test-final-button" onClick={()=>startAt("final")} disabled={!graduate||!helperName.trim()||!characterReady}>Tela final</button>
+            </div>
+            <small className="test-warning">Os resultados deste modo não entram no ranking.</small>
+          </div>}
           <div className="gesture-guide"><span>☝️ <b>Deslize para cima</b><small>para pular</small></span><i/><span>👇 <b>Deslize para baixo</b><small>para abaixar</small></span></div>
         </div>
       </div>}
@@ -1093,9 +1116,9 @@ function Game() {
               <small>PONTOS ELEVENS RUN</small>
             </div>
             {savingResult&&<div className="ranking-status"><p>Registrando sua conquista...</p></div>}
-            {savedResult&&<div className="victory-ranking">
-              <div><small>RANKING DA TURMA</small><strong>{savedResult.position?`${savedResult.position}º`:'—'}</strong></div>
-              <div><small>PONTOS ELEVENS</small><strong>{savedResult.elevens_confirmed}</strong></div>
+            {(savedResult||testMode)&&<div className="victory-ranking">
+              <div><small>RANKING DA TURMA</small><strong>{testMode?"3º":savedResult?.position?`${savedResult.position}º`:'—'}</strong></div>
+              <div><small>PONTOS ELEVENS</small><strong>{testMode?view.coins:savedResult?.elevens_confirmed}</strong></div>
             </div>}
             {saveError&&<p className="form-error">{saveError}</p>}
             <p className="victory-challenge">Agora desafie seus amigos a superar esse resultado.</p>
@@ -1105,7 +1128,7 @@ function Game() {
             <img src={finaleImagesRef.current[0]?.src||"/finale/character-victory.png"} alt=""/>
           </div>
           <div className="victory-actions">
-            {savedResult?<button className="victory-share-button" onClick={()=>navigate(`/resultado/${savedResult.result_code}`)}><span>↗</span><b>COMPARTILHAR NOS STORIES</b><small>Imagem 9:16 pronta para publicar</small></button>:<div className="victory-share-wait">Preparando seu resultado para compartilhar…</div>}
+            {testMode?<div className="victory-share-wait">Prévia de teste — compartilhamento e ranking desativados</div>:savedResult?<button className="victory-share-button" onClick={()=>navigate(`/resultado/${savedResult.result_code}`)}><span>↗</span><b>COMPARTILHAR NOS STORIES</b><small>Imagem 9:16 pronta para publicar</small></button>:<div className="victory-share-wait">Preparando seu resultado para compartilhar…</div>}
             <button className="victory-replay-button" onClick={start} disabled={savingResult}>↻ JOGAR NOVAMENTE</button>
           </div>
           <div className="victory-footer"><span>FAMILY WEEK</span><i/> SUA JORNADA. NOSSO REGISTRO.</div>
