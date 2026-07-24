@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { loadCharacterBundle } from "./character-assets";
 
 type Mode = "ready" | "countdown" | "playing" | "transition" | "celebrating" | "over" | "won";
 type Stage = "campus" | "laboratory" | "hospital" | "graduation";
@@ -19,6 +20,7 @@ const GAME_SECONDS = STAGE_SECONDS * 4;
 
 type ResultData = {
   result_code: string;
+  graduate_id: number;
   helper_name: string;
   score: number;
   elevens_confirmed: number;
@@ -47,6 +49,7 @@ function ResultPage({ code }: { code: string }) {
   const [position, setPosition] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [resultCharacter, setResultCharacter] = useState("/finale/character-victory.png");
 
   useEffect(() => {
     let cancelled = false;
@@ -77,6 +80,15 @@ function ResultPage({ code }: { code: string }) {
       cancelled = true;
     };
   }, [code]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!result?.graduate_id) return;
+    void loadCharacterBundle(String(result.graduate_id)).then(bundle => {
+      if (!cancelled) setResultCharacter(bundle.victory.src);
+    });
+    return () => { cancelled = true; };
+  }, [result?.graduate_id]);
 
   const buildStoryCanvas = useCallback(async () => {
     if (!result) return null;
@@ -121,7 +133,7 @@ function ResultPage({ code }: { code: string }) {
     const [background, photographerOne, graduateImage, photographerTwo] = await Promise.all([
       loadClientImage("/backgrounds/graduation-01.png"),
       loadClientImage("/finale/photographer-01.png"),
-      loadClientImage("/finale/character-victory.png"),
+      loadClientImage(resultCharacter),
       loadClientImage("/finale/photographer-02.png"),
     ]);
 
@@ -243,7 +255,7 @@ function ResultPage({ code }: { code: string }) {
     ctx.fillText(`Código ${result.result_code}`, 540, 1860);
 
     return canvas;
-  }, [position, result]);
+  }, [position, result, resultCharacter]);
 
   const saveImage = useCallback(async () => {
     const canvas = await buildStoryCanvas();
@@ -299,7 +311,7 @@ function ResultPage({ code }: { code: string }) {
           <div className="story-stage-light" />
           <div className="story-stage-characters">
             <img className="story-figure story-figure--left" src="/finale/photographer-01.png" alt="Fotógrafo do Studio Onze" />
-            <img className="story-figure story-figure--main" src="/finale/character-victory.png" alt="Personagem celebrando a formatura" />
+            <img className="story-figure story-figure--main" src={resultCharacter} alt="Personagem celebrando a formatura" />
             <img className="story-figure story-figure--right" src="/finale/photographer-02.png" alt="Fotógrafo do Studio Onze" />
           </div>
         </div>
@@ -399,6 +411,8 @@ function Game() {
   const [savingResult, setSavingResult] = useState(false);
   const [savedResult, setSavedResult] = useState<SavedResult | null>(null);
   const [saveError, setSaveError] = useState("");
+  const [characterReady, setCharacterReady] = useState(false);
+  const [characterPreview, setCharacterPreview] = useState("/characters/run/frame-01.png");
   const resultSavedRef = useRef(false);
   const touchStartRef = useRef<{ x: number; y: number; handled: boolean; action: "jump" | "duck" | null } | null>(null);
 
@@ -545,7 +559,7 @@ function Game() {
   }, []);
 
   const start = useCallback(() => {
-    if (!graduate || !helperName.trim()) return;
+    if (!graduate || !helperName.trim() || !characterReady) return;
     setSavedResult(null);
     setSaveError("");
     resultSavedRef.current = false;
@@ -578,7 +592,7 @@ function Game() {
       }, 3200);
     };
     void runCountdown();
-  }, [ensureAudio, graduate, helperName, note, playSound, sync]);
+  }, [characterReady, ensureAudio, graduate, helperName, note, playSound, sync]);
 
   const jump = useCallback(() => {
     const s = stateRef.current;
@@ -661,34 +675,26 @@ function Game() {
   }, []);
 
   useEffect(() => {
-    const sources = [
-      "/characters/run/frame-01.png",
-      "/characters/run/frame-02.png",
-      "/characters/run/frame-03.png",
-      "/characters/run/frame-04.png",
-      "/characters/jump.png",
-      "/characters/duck.png",
-    ];
-    characterImagesRef.current = sources.map(source => {
-      const image = new Image();
-      image.src = source;
-      return image;
+    let cancelled = false;
+    setCharacterReady(false);
+    void loadCharacterBundle(graduate || undefined).then(bundle => {
+      if (cancelled) return;
+      characterImagesRef.current = bundle.normal;
+      graduationImagesRef.current = bundle.graduation;
+      const photographers = finaleImagesRef.current.slice(1);
+      finaleImagesRef.current = [bundle.victory, ...photographers];
+      setCharacterPreview(bundle.normal[0].src);
+      setCharacterReady(true);
+    }).catch(() => {
+      if (!cancelled) setCharacterReady(false);
     });
-    const graduationSources = [
-      "/characters/graduation/run/frame-01.png",
-      "/characters/graduation/run/frame-02.png",
-      "/characters/graduation/run/frame-03.png",
-      "/characters/graduation/run/frame-04.png",
-      "/characters/graduation/jump.png",
-      "/characters/graduation/duck.png",
-    ];
-    graduationImagesRef.current = graduationSources.map(source => {
-      const image = new Image();
-      image.src = source;
-      return image;
-    });
-    const finaleSources = ["/finale/character-victory.png", "/finale/photographer-01.png", "/finale/photographer-02.png"];
-    finaleImagesRef.current = finaleSources.map(source => { const image = new Image(); image.src = source; return image; });
+    return () => { cancelled = true; };
+  }, [graduate]);
+
+  useEffect(() => {
+    const finaleSources = ["/finale/photographer-01.png", "/finale/photographer-02.png"];
+    const photographers = finaleSources.map(source => { const image = new Image(); image.src = source; return image; });
+    finaleImagesRef.current = [finaleImagesRef.current[0], ...photographers].filter(Boolean);
     const backgroundSources: Partial<Record<Stage, string>> = { campus: "/backgrounds/campus-01.png", laboratory: "/backgrounds/laboratory-01.png", hospital: "/backgrounds/hospital-01.png", graduation: "/backgrounds/graduation-01.png" };
     backgroundImagesRef.current = Object.fromEntries(Object.entries(backgroundSources).map(([stage, source]) => {
       const image = new Image(); image.src = source; return [stage, image];
@@ -1059,17 +1065,52 @@ function Game() {
       <canvas ref={canvasRef} aria-label="Jogo Elevens Run" onTouchStart={handleTouchStart} onTouchMove={handleTouchMove} onTouchEnd={handleTouchEnd} onTouchCancel={handleTouchCancel} />
       {view.mode==="ready"&&<div className="start-screen">
         <div className="start-copy"><span className="eyebrow">SUA JORNADA COMEÇA AGORA</span><h1>Corra rumo à<br/><em>Formatura.</em></h1><p>Colete Pontos Elevens, supere os obstáculos do campus e avance na sua jornada da Medicina.</p></div>
-        <img className="hero-character" src="/characters/run/frame-01.png" alt="Personagem médica do Elevens Run" />
+        <img className="hero-character" src={characterPreview} alt="Personagem médica do Elevens Run" />
         <div className="identity-card">
           <label className="graduate-search"><span>FORMANDO</span><input value={graduateQuery} onFocus={()=>setGraduateSearchOpen(true)} onBlur={()=>window.setTimeout(()=>setGraduateSearchOpen(false),140)} onChange={event=>{setGraduateQuery(event.target.value);setGraduate("");setGraduateSearchOpen(true)}} placeholder={graduatesLoading?"Carregando formandos...":"Digite o nome do formando"} disabled={graduatesLoading||!!graduatesError} autoComplete="off" role="combobox" aria-expanded={graduateSearchOpen}/>{graduateSearchOpen&&!graduatesLoading&&!graduatesError&&<div className="graduate-options">{graduates.filter(item=>item.display_name.toLocaleLowerCase('pt-BR').includes(graduateQuery.trim().toLocaleLowerCase('pt-BR'))).slice(0,8).map(item=><button type="button" key={item.id} onMouseDown={event=>event.preventDefault()} onClick={()=>{setGraduate(String(item.id));setGraduateQuery(item.display_name);setGraduateSearchOpen(false)}}><b>{item.display_name}</b><small>{item.contract}</small></button>)}{graduateQuery.trim()&&graduates.filter(item=>item.display_name.toLocaleLowerCase('pt-BR').includes(graduateQuery.trim().toLocaleLowerCase('pt-BR'))).length===0&&<p>Nenhum formando encontrado.</p>}</div>}{graduatesError&&<small className="form-error">{graduatesError}</small>}</label>
           <label><span>QUEM ESTÁ AJUDANDO HOJE?</span><input value={helperName} onChange={event=>setHelperName(event.target.value)} placeholder="Digite o nome de quem está ajudando" autoComplete="name" /></label>
-          <button className="start-button" onClick={start} disabled={!graduate||!helperName.trim()}>INICIAR JORNADA <span>→</span></button>
+          <button className="start-button" onClick={start} disabled={!graduate||!helperName.trim()||!characterReady}>{characterReady?"INICIAR JORNADA":"CARREGANDO PERSONAGEM…"} <span>→</span></button>
           <div className="gesture-guide"><span>☝️ <b>Deslize para cima</b><small>para pular</small></span><i/><span>👇 <b>Deslize para baixo</b><small>para abaixar</small></span></div>
         </div>
       </div>}
       {view.mode==="transition"&&phaseTransition&&<div className="phase-transition-overlay"><div className="phase-transition-card"><span>PRÓXIMA ETAPA</span><h2>{phaseTransition.stage==="laboratory"?"LABORATÓRIO":phaseTransition.stage==="hospital"?"INTERNATO":"COLAÇÃO"}</h2><p>{phaseTransition.stage==="laboratory"?"Uma nova etapa de aprendizado, prática e descobertas.":phaseTransition.stage==="hospital"?"A rotina se intensifica e os desafios ficam mais exigentes.":"A reta final da jornada até a conquista da formatura."}</p><small>Continuando em {Math.max(1,Math.ceil(phaseTransition.remaining))}s</small></div></div>}
       {view.mode==="countdown"&&<div className="countdown-overlay"><div className="countdown-card"><span className="countdown-kicker">PREPARE-SE, {graduates.find(item=>String(item.id)===graduate)?.display_name||"FORMANDO"}</span><strong>{countdown}</strong><div className="countdown-gestures"><span>↑ <b>Deslize para cima</b><small>para pular</small></span><span>↓ <b>Deslize para baixo</b><small>para abaixar</small></span></div></div></div>}
-      {view.mode==="won"&&<div className="overlay victory-overlay"><div className="victory-panel"><div className="victory-copy"><span className="family-week-label">FAMILY WEEK NO STUDIO ONZE</span><span className="eyebrow">JORNADA CONCLUÍDA</span><h1>{graduates.find(item=>String(item.id)===graduate)?.display_name||"Formando"}</h1><p>Você chegou à Formatura com <strong>{view.score.toLocaleString('pt-BR')}</strong> pontos e coletou <strong>{view.coins}</strong> Pontos Elevens.</p>{savingResult&&<div className="ranking-status"><p>Registrando sua conquista...</p></div>}{savedResult&&<div className="victory-data"><div><small>PONTOS CONFIRMADOS</small><strong>{savedResult.elevens_confirmed}</strong><span>inclui bônus de {savedResult.completion_bonus}</span></div><div><small>POSIÇÃO NO RANKING</small><strong>{savedResult.position?`${savedResult.position}º`:'—'}</strong><span>ranking acumulado</span></div><div><small>CÓDIGO</small><strong className="result-code">{savedResult.result_code}</strong></div></div>}{saveError&&<p className="form-error">{saveError}</p>}</div><div className="victory-share">{savedResult?<><img className="qr-code" src={`https://api.qrserver.com/v1/create-qr-code/?size=360x360&margin=10&data=${encodeURIComponent(`${typeof window!=="undefined"?window.location.origin:""}/resultado/${savedResult.result_code}`)}`} alt="QR Code do resultado"/><h2>Leve sua conquista com você</h2><p>Escaneie para abrir seu card no celular, compartilhar e ver o ranking.</p><button className="secondary-button" onClick={()=>navigate('/ranking')}>VER RANKING GERAL</button></>:<div className="qr-placeholder">O QR Code aparecerá após a confirmação.</div>}<button className="start-button" onClick={start} disabled={savingResult}>JOGAR NOVAMENTE <span>→</span></button></div></div></div>}
+      {view.mode==="won"&&<div className="overlay victory-overlay">
+        <div className="victory-glow victory-glow--one"/><div className="victory-glow victory-glow--two"/>
+        <div className="victory-confetti" aria-hidden="true">{Array.from({length:18},(_,index)=><i key={index}/>)}</div>
+        <div className="victory-panel victory-panel--premium">
+          <div className="victory-brand"><span className="victory-brand-mark">11</span><span>STUDIO ONZE</span></div>
+          <div className="victory-copy">
+            <span className="victory-kicker">JORNADA CONCLUÍDA</span>
+            <h1>Você chegou à<br/><em>Formatura!</em></h1>
+            <div className="victory-player">
+              <strong>{graduates.find(item=>String(item.id)===graduate)?.display_name||"Formando"}</strong>
+              <span>{graduates.find(item=>String(item.id)===graduate)?.contract||"MED15 • UNIRV"}</span>
+            </div>
+            <div className="victory-score">
+              <span>SUA PONTUAÇÃO</span>
+              <strong>{view.score.toLocaleString('pt-BR')}</strong>
+              <small>PONTOS ELEVENS RUN</small>
+            </div>
+            {savingResult&&<div className="ranking-status"><p>Registrando sua conquista...</p></div>}
+            {savedResult&&<div className="victory-ranking">
+              <div><small>RANKING DA TURMA</small><strong>{savedResult.position?`${savedResult.position}º`:'—'}</strong></div>
+              <div><small>PONTOS ELEVENS</small><strong>{savedResult.elevens_confirmed}</strong></div>
+            </div>}
+            {saveError&&<p className="form-error">{saveError}</p>}
+            <p className="victory-challenge">Agora desafie seus amigos a superar esse resultado.</p>
+          </div>
+          <div className="victory-hero" aria-hidden="true">
+            <div className="victory-stage-light"/>
+            <img src={finaleImagesRef.current[0]?.src||"/finale/character-victory.png"} alt=""/>
+          </div>
+          <div className="victory-actions">
+            {savedResult?<button className="victory-share-button" onClick={()=>navigate(`/resultado/${savedResult.result_code}`)}><span>↗</span><b>COMPARTILHAR NOS STORIES</b><small>Imagem 9:16 pronta para publicar</small></button>:<div className="victory-share-wait">Preparando seu resultado para compartilhar…</div>}
+            <button className="victory-replay-button" onClick={start} disabled={savingResult}>↻ JOGAR NOVAMENTE</button>
+          </div>
+          <div className="victory-footer"><span>FAMILY WEEK</span><i/> SUA JORNADA. NOSSO REGISTRO.</div>
+        </div>
+      </div>}
       {view.mode==="over"&&<div className="overlay"><div className="modal"><span className="eyebrow">PLANTÃO ENCERRADO</span><h1>Quase! Tente<br/><em>mais uma vez.</em></h1><p>{graduate&&<strong>{graduates.find(item=>String(item.id)===graduate)?.display_name}: </strong>}Sua pontuação foi {view.score} com {view.coins} Pontos Elevens.</p><button onClick={start}>JOGAR NOVAMENTE<span>→</span></button></div></div>}
     </section>
     <footer><span>STUDIO ONZE • ELEVENS RUN</span><span className="legend"><i/> TOUCH-SCREEN <i/> JORNADA DA MEDICINA</span></footer>
